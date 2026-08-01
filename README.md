@@ -49,7 +49,7 @@ These carry the exploratory-testing doctrine. The orchestrator routes to them; t
 | Skill | What it teaches |
 |-------|-----------------|
 | [`stride-exploratory-testing`](skills/stride-exploratory-testing/SKILL.md) | The front door and orchestrator. Teaches the mental model (Tested = Checked + Explored), frames a time-boxed session, and routes each request to the right sub-skill or workflow. |
-| [`chartering`](skills/chartering/SKILL.md) | How to decide *what* to explore and frame it as a charter — the `Explore <target> with <resources> to discover <information>` template, the charter sources, the Nightmare Headline Game, and the SFDPOT lens. |
+| [`chartering`](skills/chartering/SKILL.md) | How to decide *what* to explore and frame it as a charter — the `Explore <target> with <resources> to discover <information>` template, the charter sources, the Nightmare Headline Game, and the SFDIPOT lens. |
 | [`heuristics`](skills/heuristics/SKILL.md) | The single source of truth for test ideas — general and web cheat sheets, the variable-spotting catalog, and Whittaker's Tours. Every other skill and agent links here rather than duplicating it. |
 | [`oracles`](skills/oracles/SKILL.md) | How to decide whether an observed result is a defect — Never/Always rules, alternative-resource consistency checks, approximations, and the Heuristic Test Strategy Model's quality-criteria checklist. |
 | [`session`](skills/session/SKILL.md) | The session discipline — time-boxing, the SBTM session sheet, Task Breakdown Metrics, note conventions, stopping heuristics, and both debrief templates (Explored/Found/Unknown and PROOF). |
@@ -73,7 +73,7 @@ Two `.agent.md` subagents do the bounded, fan-out-friendly work.
 | Agent | What it does |
 |-------|--------------|
 | [`charter-generator`](agents/charter-generator.agent.md) | Given a target and optional risk context, returns a ranked list of well-formed charters as structured JSON. Read-only; it generates charters and never executes them. |
-| [`explorer`](agents/explorer.agent.md) | Runs a single time-boxed session against ONE charter — designs probes from the `heuristics` skill, exercises the running app as a user would, judges results with `oracles`, records an SBTM sheet, and returns structured findings. Operates under an absolute non-destructive, authorized-target-only safety boundary. |
+| [`explorer`](agents/explorer.agent.md) | Runs a single budgeted session against ONE charter — designs probes from the `heuristics` skill, exercises the running app as a user would, judges results with `oracles`, records an SBTM sheet, and returns structured findings. Operates under an absolute non-destructive, authorized-target-only safety boundary. |
 
 ## Quick-start — your first session
 
@@ -93,6 +93,11 @@ You can go from "I want to test this feature" to a debrief in one Copilot CLI se
    > Activate stride-exploratory-testing-explore for the CSV import --timebox 90
    ```
 
+   `--timebox` is **your** clock: it decides how many charters get funded (one
+   session ≈ 90 minutes). Each explorer session itself is bounded by an
+   agent-native **probe budget** — 12 probes by default, `--probes` to change —
+   because an agent has no honest way to measure minutes.
+
    The skill asks a single up-front round of questions (how to reach the app, an explicit *authorized-and-non-production* confirmation, which interaction tools are available, and where test data lives), then dispatches the `explorer` agent per charter. It **fails closed** — with no authorized non-production target, it degrades to a plan-only charter list and does not execute.
 
 3. **Read the debrief.** The explore skill aggregates every session into one report — Explored/Found/Unknown, a severity-ranked bug list, a follow-up parking lot, and a PROOF review. (See [`fixtures/example-session-sheet.md`](fixtures/example-session-sheet.md) and [`fixtures/example-debrief.md`](fixtures/example-debrief.md).)
@@ -106,7 +111,7 @@ Not sure where the risk is? Start with `stride-exploratory-testing-recon` to map
 The [`fixtures/`](fixtures/) directory holds worked examples that double as templates and as regression anchors for the smoke tests. All of them use a single fictional, synthetic target (*ExpenseFlow*) with placeholder hosts (`demo.example.com`) and tenants (`<tenant A>`) — no real product, data, or credentials appear.
 
 - [`example-charters.md`](fixtures/example-charters.md) — a ranked charter set plus a worked nightmare-headline-to-charter example and the "charter vs. check" anti-pattern.
-- [`example-session-sheet.md`](fixtures/example-session-sheet.md) — a worked SBTM session sheet with populated Task Breakdown Metrics.
+- [`example-session-sheet.md`](fixtures/example-session-sheet.md) — a worked **agent-run** session sheet: a session budget and the counts the explorer actually kept, in place of a duration and Task Breakdown Metric percentages.
 - [`example-debrief.md`](fixtures/example-debrief.md) — a worked debrief using both the Explored/Found/Unknown and PROOF templates.
 
 For the full heuristics catalog, see the [`heuristics`](skills/heuristics/SKILL.md) skill (and the pointer in [HEURISTICS.md](HEURISTICS.md)) — it is the single source of truth and is deliberately not duplicated elsewhere.
@@ -117,7 +122,7 @@ Exploratory testing is a decades-old craft, and this plugin stands on the should
 
 - **Session-Based Test Management (SBTM)** — the session sheet, the charter, Task Breakdown Metrics, and the **PROOF** debrief mnemonic (Past / Results / Obstacles / Outlook / Feelings) originate with **James Bach** and **Jonathan Bach**. The `session` skill operationalizes SBTM.
 - **Tours** — the touring heuristics for surveying an application (Guidebook, Landmark, Garbage Collector's, and others) originate with **James Whittaker** (*Exploratory Software Testing*). The `heuristics` skill groups them by district.
-- **The Heuristic Test Strategy Model (HTSM)** — the quality-criteria checklist used to derive Never/Always oracle statements, and the SFDPOT product-element lens, originate with **James Bach**. The `oracles` and `chartering` skills draw on it.
+- **The Heuristic Test Strategy Model (HTSM)** — the quality-criteria checklist used to derive Never/Always oracle statements, and the SFDIPOT product-element lens, originate with **James Bach**. The `oracles` and `chartering` skills draw on it.
 
 These references are paraphrased and adapted; only brief fair-use snippets of any original phrasing appear. For the source material itself, consult the authors' own writing (Satisfice, the *Exploratory Software Testing* book, and the SBTM papers).
 
