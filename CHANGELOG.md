@@ -4,7 +4,7 @@ All notable changes to the `stride-copilot-exploratory-testing` plugin are docum
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.2.0] - 2026-08-01
 
 Ported from the Claude Code plugin's 2026-07 improvement research: a sixth skill carrying the severity rubric the contract always required, session artifacts that survive the conversation, the SFDIPOT correction, and an explorer contract that reports what it counted instead of what it could not measure.
 
