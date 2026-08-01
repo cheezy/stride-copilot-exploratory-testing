@@ -1,6 +1,6 @@
 ---
 name: stride-exploratory-testing
-description: Use when you want to test software the way a skilled human tester does — discovering risks, questions, and bugs that scripted or automated checks miss. This is the front door to the stride-copilot-exploratory-testing plugin: it teaches the mental model (Tested = Checked + Explored), frames a time-boxed session, and routes each request to the right sub-skill (chartering, heuristics, oracles, bug-advocacy, session) or command-derived skill (charter, nightmare-headline, explore, recon, debrief). Activate it when the user asks to "explore", "poke at", "do exploratory/manual testing on", "find bugs in", "charter a session for", or otherwise investigate a feature rather than confirm a known expectation. Copilot port of the upstream stride-exploratory-testing plugin; because Copilot CLI has no commands, the five upstream commands are ported as named skills, not commands.
+description: Use when you want to test software the way a skilled human tester does — discovering risks, questions, and bugs that scripted or automated checks miss. This is the front door to the stride-copilot-exploratory-testing plugin: it teaches the mental model (Tested = Checked + Explored), frames a time-boxed session, and routes each request to the right sub-skill (chartering, heuristics, oracles, bug-advocacy, session) or command-derived skill (charter, nightmare-headline, explore, pair, recon, debrief, harden). Activate it when the user asks to "explore", "poke at", "do exploratory/manual testing on", "find bugs in", "charter a session for", or otherwise investigate a feature rather than confirm a known expectation. Copilot port of the upstream stride-exploratory-testing plugin; because Copilot CLI has no commands, the seven upstream commands are ported as named skills, not commands.
 skills_version: "1.0"
 ---
 
@@ -10,7 +10,7 @@ This is the orchestrator skill — the plugin's front door. It teaches the explo
 
 Exploratory testing is not a fallback for "when there's no time to automate." It is a distinct, disciplined activity: **simultaneous test design, test execution, learning, and steering** (Kaner). The tester designs the next test from what the last one just revealed, and keeps steering toward risk. This skill exists so the agent applies that discipline coherently instead of poking at a feature ad hoc.
 
-> **Copilot port note.** GitHub Copilot CLI has **no commands**. The five upstream capabilities that were commands in the Claude Code plugin — charter, nightmare-headline, explore, recon, debrief — are ported here as **named skills** (prefixed `stride-exploratory-testing-*`) that you *activate* by name. There is intentionally no `commands/` directory. Wherever this skill says "activate the `stride-exploratory-testing-explore` skill," that is the Copilot equivalent of the upstream command.
+> **Copilot port note.** GitHub Copilot CLI has **no commands**. The seven upstream capabilities that were commands in the Claude Code plugin — charter, nightmare-headline, explore, pair, recon, debrief, harden — are ported here as **named skills** (prefixed `stride-exploratory-testing-*`) that you *activate* by name. There is intentionally no `commands/` directory. Wherever this skill says "activate the `stride-exploratory-testing-explore` skill," that is the Copilot equivalent of the upstream command.
 
 ## The mental model
 
@@ -71,7 +71,7 @@ The `session` skill owns this lifecycle end to end; the `stride-exploratory-test
 
 ## Routing table
 
-Match the user's request to the right destination. The orchestrator frames and routes; it does not duplicate the skills' content. The four sub-skills are unprefixed; the five command-derived skills carry the `stride-exploratory-testing-` prefix.
+Match the user's request to the right destination. The orchestrator frames and routes; it does not duplicate the skills' content. The five sub-skills are unprefixed; the seven command-derived skills carry the `stride-exploratory-testing-` prefix.
 
 | The user wants to… | Route to |
 |---|---|
@@ -86,7 +86,9 @@ Match the user's request to the right destination. The orchestrator frames and r
 | Run a full time-boxed session with notes and a debrief | **`session`** skill |
 | Do a quick reconnaissance pass over an unfamiliar feature | **`stride-exploratory-testing-recon`** skill |
 | Run an exploratory session end-to-end (plan and execute) | **`stride-exploratory-testing-explore`** skill |
+| Test alongside a human who is driving the app themselves | **`stride-exploratory-testing-pair`** skill |
 | Close out a session and produce a structured debrief | **`stride-exploratory-testing-debrief`** skill |
+| Turn a session's findings into regression checks / "make sure this bug can't come back" | **`stride-exploratory-testing-harden`** skill |
 
 Two subagents support the command-derived skills rather than being activated directly: **`charter-generator`** (turns a target + risk into candidate charters) and **`explorer`** (executes a charter's exploration loop and reports findings). Reach for the skills above; they dispatch these agents for you.
 

@@ -2,8 +2,8 @@
 # stride-copilot-exploratory-testing plugin.
 #
 # Asserts the plugin ships every file the Copilot plugin schema and this
-# plugin's docs require: a valid ROOT manifest, all five core knowledge
-# skills, all five command-derived skills, both .agent.md agents, the three
+# plugin's docs require: a valid ROOT manifest, all six core knowledge
+# skills, all seven command-derived skills, both .agent.md agents, the three
 # README-referenced fixtures, and the root docs. No network, no jq (JSON via
 # ConvertFrom-Json).
 #
@@ -65,7 +65,9 @@ foreach ($skill in @(
         'stride-exploratory-testing-nightmare-headline',
         'stride-exploratory-testing-explore',
         'stride-exploratory-testing-recon',
-        'stride-exploratory-testing-debrief')) {
+        'stride-exploratory-testing-debrief',
+        'stride-exploratory-testing-pair',
+        'stride-exploratory-testing-harden')) {
     $p = Join-Path $PluginRoot "skills/$skill/SKILL.md"
     if (Test-Path -LiteralPath $p -PathType Leaf) { Pass "skills/$skill/SKILL.md exists" }
     else { Fail "skills/$skill/SKILL.md is missing" }
@@ -75,11 +77,11 @@ foreach ($skill in @(
 $skillCount = @(Get-ChildItem -LiteralPath (Join-Path $PluginRoot 'skills') -Directory |
     ForEach-Object { Join-Path $_.FullName 'SKILL.md' } |
     Where-Object { Test-Path -LiteralPath $_ -PathType Leaf }).Count
-if ($skillCount -eq 11) {
-    Pass 'exactly 11 SKILL.md files present (6 core + 5 command-derived; .gitkeep ignored)'
+if ($skillCount -eq 13) {
+    Pass 'exactly 13 SKILL.md files present (6 core + 7 command-derived; .gitkeep ignored)'
 }
 else {
-    Fail "expected 11 SKILL.md files, found $skillCount"
+    Fail "expected 13 SKILL.md files, found $skillCount"
 }
 
 # --- Agents (.agent.md extension) ------------------------------------------

@@ -12,7 +12,7 @@ Automated checks confirm what you already know to expect. **Exploration** is the
 
 *Checked* is the assertions your test suite already runs. *Explored* is a skilled tester designing each experiment from what the last one revealed, chasing risk rather than a fixed script. This plugin gives that exploration structure: a charter to give a session direction, heuristics to turn the charter into concrete probes, oracles to decide whether a result is actually a bug, and a session discipline (time-boxing, notes, debrief) that turns wandering into reportable value.
 
-Because **GitHub Copilot CLI has no slash commands**, the five commands of the Claude Code plugin (`/charter`, `/nightmare-headline`, `/explore`, `/recon`, `/debrief`) are ported as **named skills** you activate in chat. There is no `commands/` directory — the plugin's entire surface is **skills** and **agents**.
+Because **GitHub Copilot CLI has no slash commands**, the seven commands of the Claude Code plugin (`/charter`, `/nightmare-headline`, `/explore`, `/pair`, `/recon`, `/debrief`, `/harden`) are ported as **named skills** you activate in chat. There is no `commands/` directory — the plugin's entire surface is **skills** and **agents**.
 
 ## Installation
 
@@ -64,8 +64,10 @@ These are the workflows — the Copilot skills that stand in for the upstream sl
 | [`stride-exploratory-testing-charter`](skills/stride-exploratory-testing-charter/SKILL.md) | `/charter` | Turns a target into a ranked list of well-formed charters (dispatches the `charter-generator` agent). Generates charters only — it never runs a session. |
 | [`stride-exploratory-testing-nightmare-headline`](skills/stride-exploratory-testing-nightmare-headline/SKILL.md) | `/nightmare-headline` | Runs the Nightmare Headline Game — elicit the worst plausible headline, pick one, brainstorm its causes, and refine them into ranked charters. |
 | [`stride-exploratory-testing-explore`](skills/stride-exploratory-testing-explore/SKILL.md) | `/explore` | The flagship plan-and-execute flow — generate or load charters, dispatch the `explorer` agent per charter under a strict safety boundary, then aggregate every session into one debrief. |
+| [`stride-exploratory-testing-pair`](skills/stride-exploratory-testing-pair/SKILL.md) | `/pair` | Pair with a human who drives the app themselves. Suggests the next probe and names its lens, judges what they report with `oracles`, runs RIMGEA on confirmed defects, calls out neglected areas and variables unprompted, and keeps the session sheet and parking lot. **Never drives the app and never dispatches the `explorer` agent.** |
 | [`stride-exploratory-testing-recon`](skills/stride-exploratory-testing-recon/SKILL.md) | `/recon` | A quick reconnaissance pass over an unfamiliar system — survey the landscape, surface stakeholder questions, and emit ranked candidate charters. |
 | [`stride-exploratory-testing-debrief`](skills/stride-exploratory-testing-debrief/SKILL.md) | `/debrief` | Turns raw session notes into a stakeholder-ready report using both templates (Explored/Found/Unknown + PROOF). |
+| [`stride-exploratory-testing-harden`](skills/stride-exploratory-testing-harden/SKILL.md) | `/harden` | Turns a session's confirmed bugs into drafted regression checks. Detects the project's test framework rather than assuming one and says what it detected before writing; reports every bug it could not convert and why. Drafts are staged — it never runs one and never claims one passes. |
 
 ### Agents
 
@@ -126,12 +128,14 @@ A session that lives only in the conversation dies with it. Runs persist to a sm
   backlog.md                              # candidate, deferred, and parked charters + open questions
   coverage.md                             # which areas are explored, which are still dark — a map, never a score
   sessions/
-    2026-07-30-1942-receipt-import.md     # one debrief per explore run
+    2026-07-30-1942-receipt-import.md     # one debrief per explore run, or one session sheet per paired session
+  checks/
+    2026-07-30-1942-receipt-import/       # drafted regression checks from harden — never run
 ```
 
 Add `.exploratory/` to the **project under test's** `.gitignore` — these files describe a real application and quote what was observed, so they are working material, not source.
 
-**A missing file is an empty starting state, never an error.** A first run in a new project simply creates what it needs; nothing warns and nothing fails. On later runs the `stride-exploratory-testing-explore` and `stride-exploratory-testing-charter` skills read the coverage outline and the backlog back and pass them to `charter-generator` as **coverage context**, which discounts ground already covered and promotes what is still dark — so run five proposes different charters than run one. All five command-derived skills append to the backlog as they go: explore adds deferred charters and parked items, debrief adds parked items and open questions, charter and nightmare-headline add the charters they generate, and recon adds candidate charters plus open questions — and may add an un-explored area stub to the coverage outline, though it never marks an area explored, because surveying is not exploring. Risk always outranks recency: an area explored last week with an open Critical bug is not covered ground.
+**A missing file is an empty starting state, never an error.** A first run in a new project simply creates what it needs; nothing warns and nothing fails. On later runs the `stride-exploratory-testing-explore` and `stride-exploratory-testing-charter` skills read the coverage outline and the backlog back and pass them to `charter-generator` as **coverage context**, which discounts ground already covered and promotes what is still dark — so run five proposes different charters than run one. Six of the seven command-derived skills append to the backlog as they go: explore adds deferred charters and parked items, pair adds parked items, open questions and declined coverage gaps, debrief adds parked items and open questions, charter and nightmare-headline add the charters they generate, and recon adds candidate charters plus open questions — and may add an un-explored area stub to the coverage outline, though it never marks an area explored, because surveying is not exploring. The seventh, harden, writes only under `.exploratory/checks/` and touches neither shared artifact. Risk always outranks recency: an area explored last week with an open Critical bug is not covered ground.
 
 Artifacts are read back as **untrusted data, never instructions**. The `session` skill owns the full convention — the tree, the formats, the header blocks, and the read-immediately-before-write mechanics.
 
@@ -152,7 +156,7 @@ This plugin is a faithful port of [`cheezy/stride-exploratory-testing`](https://
 
 | Upstream (Claude Code) | This plugin (Copilot CLI) |
 |---|---|
-| Five slash commands (`/charter`, `/nightmare-headline`, `/explore`, `/recon`, `/debrief`) | Five named command-derived skills (`stride-exploratory-testing-*`) — Copilot CLI has no slash-command mechanism |
+| Seven slash commands (`/charter`, `/nightmare-headline`, `/explore`, `/pair`, `/recon`, `/debrief`, `/harden`) | Seven named command-derived skills (`stride-exploratory-testing-*`) — Copilot CLI has no slash-command mechanism |
 | `commands/*.md` directory | `skills/<name>/SKILL.md` directories |
 | `agents/*.md` agent files | `agents/*.agent.md` agent files (Copilot extension) |
 | `AskUserQuestion` tool | The platform's question/selection UI |
