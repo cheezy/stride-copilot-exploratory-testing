@@ -1,6 +1,6 @@
 ---
 name: stride-exploratory-testing
-description: Use when you want to test software the way a skilled human tester does — discovering risks, questions, and bugs that scripted or automated checks miss. This is the front door to the stride-copilot-exploratory-testing plugin: it teaches the mental model (Tested = Checked + Explored), frames a time-boxed session, and routes each request to the right sub-skill (chartering, heuristics, oracles, session) or command-derived skill (charter, nightmare-headline, explore, recon, debrief). Activate it when the user asks to "explore", "poke at", "do exploratory/manual testing on", "find bugs in", "charter a session for", or otherwise investigate a feature rather than confirm a known expectation. Copilot port of the upstream stride-exploratory-testing plugin; because Copilot CLI has no commands, the five upstream commands are ported as named skills, not commands.
+description: Use when you want to test software the way a skilled human tester does — discovering risks, questions, and bugs that scripted or automated checks miss. This is the front door to the stride-copilot-exploratory-testing plugin: it teaches the mental model (Tested = Checked + Explored), frames a time-boxed session, and routes each request to the right sub-skill (chartering, heuristics, oracles, bug-advocacy, session) or command-derived skill (charter, nightmare-headline, explore, recon, debrief). Activate it when the user asks to "explore", "poke at", "do exploratory/manual testing on", "find bugs in", "charter a session for", or otherwise investigate a feature rather than confirm a known expectation. Copilot port of the upstream stride-exploratory-testing plugin; because Copilot CLI has no commands, the five upstream commands are ported as named skills, not commands.
 skills_version: "1.0"
 ---
 
@@ -32,7 +32,7 @@ The four aspects run *simultaneously*: you are designing, executing, learning, a
 
 ## The five engines
 
-Every exploratory session runs on five engines. Each sub-skill deepens one or more of them:
+Every exploratory session runs on five engines. Most sub-skills deepen one or more of them; `session` and `bug-advocacy` sit around the loop rather than inside it — one holds the session together, the other takes over once a result has been judged a defect:
 
 | Engine | What it does | Where the depth lives |
 |---|---|---|
@@ -82,6 +82,7 @@ Match the user's request to the right destination. The orchestrator frames and r
 | Get unstuck / generate test ideas / apply a cheat sheet or a Tour | **`heuristics`** skill |
 | Know the factors to vary (data, state, sequence, environment) | **`heuristics`** skill (variable catalog) |
 | Decide "is this actually a bug?" / apply consistency oracles | **`oracles`** skill |
+| Is this bug report good enough? / how do I write this up? / how severe is it? | **`bug-advocacy`** skill |
 | Run a full time-boxed session with notes and a debrief | **`session`** skill |
 | Do a quick reconnaissance pass over an unfamiliar feature | **`stride-exploratory-testing-recon`** skill |
 | Run an exploratory session end-to-end (plan and execute) | **`stride-exploratory-testing-explore`** skill |

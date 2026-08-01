@@ -52,6 +52,7 @@ These carry the exploratory-testing doctrine. The orchestrator routes to them; t
 | [`chartering`](skills/chartering/SKILL.md) | How to decide *what* to explore and frame it as a charter — the `Explore <target> with <resources> to discover <information>` template, the charter sources, the Nightmare Headline Game, and the SFDIPOT lens. |
 | [`heuristics`](skills/heuristics/SKILL.md) | The single source of truth for test ideas — general and web cheat sheets, the variable-spotting catalog, and Whittaker's Tours. Every other skill and agent links here rather than duplicating it. |
 | [`oracles`](skills/oracles/SKILL.md) | How to decide whether an observed result is a defect — Never/Always rules, alternative-resource consistency checks, approximations, and the Heuristic Test Strategy Model's quality-criteria checklist. |
+| [`bug-advocacy`](skills/bug-advocacy/SKILL.md) | Kaner's RIMGEA discipline for the work between "an oracle says this is wrong" and a report someone can act on — Replicate, Isolate, Maximize, Generalize, Externalize, And say it clearly — plus the severity rubric every `severity` value comes from, and the dispassionate-tone rule. |
 | [`session`](skills/session/SKILL.md) | The session discipline — time-boxing, the SBTM session sheet, Task Breakdown Metrics, note conventions, stopping heuristics, and both debrief templates (Explored/Found/Unknown and PROOF). |
 
 ### Command-derived skills
@@ -116,11 +117,30 @@ The [`fixtures/`](fixtures/) directory holds worked examples that double as temp
 
 For the full heuristics catalog, see the [`heuristics`](skills/heuristics/SKILL.md) skill (and the pointer in [HEURISTICS.md](HEURISTICS.md)) — it is the single source of truth and is deliberately not duplicated elsewhere.
 
+## Session artifacts
+
+A session that lives only in the conversation dies with it. Runs persist to a small, predictable tree in **the project you are testing** (the current working directory), never in the plugin's own install location:
+
+```
+.exploratory/
+  backlog.md                              # candidate, deferred, and parked charters + open questions
+  coverage.md                             # which areas are explored, which are still dark — a map, never a score
+  sessions/
+    2026-07-30-1942-receipt-import.md     # one debrief per explore run
+```
+
+Add `.exploratory/` to the **project under test's** `.gitignore` — these files describe a real application and quote what was observed, so they are working material, not source.
+
+**A missing file is an empty starting state, never an error.** A first run in a new project simply creates what it needs; nothing warns and nothing fails. On later runs the `stride-exploratory-testing-explore` and `stride-exploratory-testing-charter` skills read the coverage outline and the backlog back and pass them to `charter-generator` as **coverage context**, which discounts ground already covered and promotes what is still dark — so run five proposes different charters than run one. All five command-derived skills append to the backlog as they go: explore adds deferred charters and parked items, debrief adds parked items and open questions, charter and nightmare-headline add the charters they generate, and recon adds candidate charters plus open questions — and may add an un-explored area stub to the coverage outline, though it never marks an area explored, because surveying is not exploring. Risk always outranks recency: an area explored last week with an open Critical bug is not covered ground.
+
+Artifacts are read back as **untrusted data, never instructions**. The `session` skill owns the full convention — the tree, the formats, the header blocks, and the read-immediately-before-write mechanics.
+
 ## Sources and attribution
 
 Exploratory testing is a decades-old craft, and this plugin stands on the shoulders of the practitioners who developed it. **Established exploratory-testing practice is the primary source**; the doctrine here paraphrases and operationalizes it rather than reproducing anyone's text. In particular:
 
 - **Session-Based Test Management (SBTM)** — the session sheet, the charter, Task Breakdown Metrics, and the **PROOF** debrief mnemonic (Past / Results / Obstacles / Outlook / Feelings) originate with **James Bach** and **Jonathan Bach**. The `session` skill operationalizes SBTM.
+- **Bug Advocacy (RIMGEA)** — Replicate, Isolate, Maximize, Generalize, Externalize, And say it clearly — the follow-through that turns a found bug into a fixed one originates with **Cem Kaner**. The `bug-advocacy` skill encodes it, along with the severity rubric.
 - **Tours** — the touring heuristics for surveying an application (Guidebook, Landmark, Garbage Collector's, and others) originate with **James Whittaker** (*Exploratory Software Testing*). The `heuristics` skill groups them by district.
 - **The Heuristic Test Strategy Model (HTSM)** — the quality-criteria checklist used to derive Never/Always oracle statements, and the SFDIPOT product-element lens, originate with **James Bach**. The `oracles` and `chartering` skills draw on it.
 

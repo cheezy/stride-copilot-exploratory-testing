@@ -54,7 +54,7 @@ fi
 
 # --- Core knowledge skills -------------------------------------------------
 
-for skill in stride-exploratory-testing chartering heuristics oracles session; do
+for skill in stride-exploratory-testing chartering heuristics oracles bug-advocacy session; do
   if [ -f "${PLUGIN_ROOT}/skills/${skill}/SKILL.md" ]; then
     ok "skills/${skill}/SKILL.md exists"
   else
@@ -79,10 +79,10 @@ done
 
 # Count only real SKILL.md files (any .gitkeep placeholder is ignored).
 SKILL_COUNT=$(find "${PLUGIN_ROOT}/skills" -mindepth 2 -maxdepth 2 -name SKILL.md | wc -l | tr -d ' ')
-if [ "$SKILL_COUNT" -eq 10 ]; then
-  ok "exactly 10 SKILL.md files present (5 core + 5 command-derived; .gitkeep ignored)"
+if [ "$SKILL_COUNT" -eq 11 ]; then
+  ok "exactly 11 SKILL.md files present (6 core + 5 command-derived; .gitkeep ignored)"
 else
-  nope "expected 10 SKILL.md files, found ${SKILL_COUNT}" ""
+  nope "expected 11 SKILL.md files, found ${SKILL_COUNT}" ""
 fi
 
 # --- Agents (.agent.md extension) ------------------------------------------

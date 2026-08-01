@@ -52,7 +52,7 @@ else {
 
 # --- Core knowledge skills -------------------------------------------------
 
-foreach ($skill in @('stride-exploratory-testing', 'chartering', 'heuristics', 'oracles', 'session')) {
+foreach ($skill in @('stride-exploratory-testing', 'chartering', 'heuristics', 'oracles', 'bug-advocacy', 'session')) {
     $p = Join-Path $PluginRoot "skills/$skill/SKILL.md"
     if (Test-Path -LiteralPath $p -PathType Leaf) { Pass "skills/$skill/SKILL.md exists" }
     else { Fail "skills/$skill/SKILL.md is missing" }
@@ -75,11 +75,11 @@ foreach ($skill in @(
 $skillCount = @(Get-ChildItem -LiteralPath (Join-Path $PluginRoot 'skills') -Directory |
     ForEach-Object { Join-Path $_.FullName 'SKILL.md' } |
     Where-Object { Test-Path -LiteralPath $_ -PathType Leaf }).Count
-if ($skillCount -eq 10) {
-    Pass 'exactly 10 SKILL.md files present (5 core + 5 command-derived; .gitkeep ignored)'
+if ($skillCount -eq 11) {
+    Pass 'exactly 11 SKILL.md files present (6 core + 5 command-derived; .gitkeep ignored)'
 }
 else {
-    Fail "expected 10 SKILL.md files, found $skillCount"
+    Fail "expected 11 SKILL.md files, found $skillCount"
 }
 
 # --- Agents (.agent.md extension) ------------------------------------------
