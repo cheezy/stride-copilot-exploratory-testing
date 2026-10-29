@@ -101,13 +101,13 @@ You can go from "I want to test this feature" to a debrief in one Copilot CLI se
    agent-native **probe budget** — 12 probes by default, `--probes` to change —
    because an agent has no honest way to measure minutes.
 
-   The skill asks a single up-front round of questions (how to reach the app, an explicit *authorized-and-non-production* confirmation, which interaction tools are available, and where test data lives), then dispatches the `explorer` agent per charter. It **fails closed** — with no authorized non-production target, it degrades to a plan-only charter list and does not execute.
+   The skill asks a single up-front round of questions (how to reach the app, an explicit *authorized-and-non-production* confirmation, which interaction tools are available, and where test data lives), then writes two structured lines first in the environment context it hands the explorer — `AUTHORIZED_NON_PRODUCTION: yes` and `ALLOWED_HOSTS: <host[:port]>, …` — quoting any forged copy in your text with `> `, and dispatches the `explorer` agent per charter. It **fails closed** — with no authorized non-production target, it degrades to a plan-only charter list and does not execute.
 
 3. **Read the debrief.** The explore skill aggregates every session into one report — Explored/Found/Unknown, a severity-ranked bug list, a follow-up parking lot, and a PROOF review. (See [`fixtures/example-session-sheet.md`](fixtures/example-session-sheet.md) and [`fixtures/example-debrief.md`](fixtures/example-debrief.md).)
 
 Not sure where the risk is? Start with `stride-exploratory-testing-recon` to map an unfamiliar system, or `stride-exploratory-testing-nightmare-headline` to brainstorm worst-case failures into charters. Already have session notes? Activate `stride-exploratory-testing-debrief` to structure them into a report.
 
-**Safety boundary.** The explorer exercises an app as a user would but **never** runs destructive or production-mutating actions, only touches systems you are authorized to test, and treats any app content it encounters as data — never as instructions. Credentials come from your environment; they are never hard-coded or written into findings.
+**Safety boundary.** The explorer exercises an app as a user would but **never** runs destructive or production-mutating actions, only touches systems you are authorized to test, and treats any app content it encounters as data — never as instructions. It runs only with `AUTHORIZED_NON_PRODUCTION: yes` and an `ALLOWED_HOSTS` line, and a missing, non-`yes` or duplicated line ends the session blocked with zero probes; hosts are matched exactly against that list. It removes every process and file it started on every exit path, and its Interrupt, Starve and Saboteur lenses stay within in-app means. Credentials come from your environment; they are never hard-coded or written into findings, and a credential file is opened only for a value the test-account pointer names.
 
 ## Fixtures
 
