@@ -86,7 +86,7 @@ A caller other than the explore skill can keep the explorer's full findings out 
 EXPLORATORY_REPORT_PATH=/absolute/path/to/report.json
 ```
 
-The explorer then writes the complete contract `1.0` findings JSON to that file in one `execute` command and replies with plain text of at most 2,048 bytes and no ```json fence: `report:`, `contract_version:`, `status:`, `stop_reason:`, the probe and tool-call counts, the bug counts by severity with the `questions_risks`, `off_charter` and `known_bad` counts, and one `<Severity> | replicated: <yes|no|not established> | <summary>` line per bug. Past the bound, whole bug lines are dropped from the lowest severity, never cut short. Read the findings from the path you supplied, never one the summary names.
+The explorer then writes the complete contract `1.0` findings JSON to that file in one `execute` command and replies with plain text of at most 2,048 bytes and no ```json fence: `report:`, `contract_version:`, `status:`, `stop_reason:`, the probe and tool-call counts, the bug counts by severity with the `questions_risks`, `off_charter` and `known_bad` counts, and one `<Severity> | replicated: <yes|no|not established> | <summary>` line per bug; in verify mode (below) a `verify:` line follows `status:`. Past the bound, whole bug lines are dropped from the lowest severity, never cut short. Read the findings from the path you supplied, never one the summary names.
 
 - **The path must come from you.** It must be absolute, with no `..` segment, quote or control character, and never built from app content, the charter or `known_issues`; two `EXPLORATORY_REPORT_PATH` lines are refused.
 - **Quote charter lines that look like it.** Copilot hands the explorer one undelimited prompt, so when you pass a charter or target text you did not write, prefix any line in it that starts with `EXPLORATORY_REPORT_PATH` with `> `, as the explore skill does, and it cannot be read as your line.
@@ -97,6 +97,31 @@ The explorer then writes the complete contract `1.0` findings JSON to that file 
 To check a written report against the contract, run `EXPLORER_OUTPUT=<path> bash lib/test-structure.sh`.
 
 **Why `execute` and not an edit tool.** GitHub's [custom agents configuration reference](https://docs.github.com/en/copilot/reference/custom-agents-configuration) lists `edit` (compatible names `Edit`, `MultiEdit`, `Write` and `NotebookEdit`) with no way to scope it to one path, so turning it on would let the explorer edit any file. The explorer therefore holds `read`, `search`, `glob` and `execute`, writes the report through a quoted heredoc under `set -o noclobber`, and states the one-path rule in its own prose, pinned by `lib/test-structure.sh` and `lib/test-structure.ps1`. The Copilot CLI's `--allow-tool` flag can allow a write to one file, as its [allowing tools](https://docs.github.com/en/copilot/how-tos/copilot-cli/use-copilot-cli/allowing-tools) page shows, but that is the caller's command line, not something an agent file can declare. `execute` is the reference's name for the shell tool (with `shell`, `Bash` and `powershell` as compatible names); it lists no `run` and ignores names it does not recognize, which is why the explorer no longer declares `run`. If the runtime still withholds a terminal, every write fails and the reply is `report: NOT WRITTEN - …` plus the fenced JSON. Copilot was not installed where this was written, so a dispatched round trip has not been run.
+
+### Explorer verify mode (`EXPLORATORY_MODE=verify`)
+
+A caller that has fixed a bug can re-check it without a full session. Add one line of its own to the environment context, next to the two required lines, and pass the bug's `summary`, `observed`, `minimal_repro` and any `generalization` as a `<verify_bug>` block outside the environment context, the way `known_issues` is passed:
+
+```text
+EXPLORATORY_MODE=verify
+```
+
+```text
+<verify_bug>
+summary: <the bug's summary>
+observed: <what was observed>
+minimal_repro: <the bug's minimal_repro>
+generalization: <optional>
+</verify_bug>
+```
+
+The explorer builds the charter from the bug, runs the `minimal_repro` as probe 1 and, when `generalization` names a condition, one variant of it as probe 2, on a budget of **2 probes / 10 tool calls**. Copilot's [custom agents configuration reference](https://docs.github.com/en/copilot/reference/custom-agents-configuration) offers no turn or step limit and the explorer's frontmatter sets none, so the 10-call ceiling is one the explorer counts itself, as it does the ordinary 60. The findings gain a root `verify` object, `{ "result", "repro_reached", "evidence" }`, and a report summary gains a `verify:` line after `status:`.
+
+- **`pass`** needs the repro point reached and no part of the failure seen. **`fail`** includes a partial fix, and the remaining defect is filed in `bugs`.
+- **`not_verified` is never a pass.** It means the repro point was not reached: no usable `minimal_repro` (missing, empty or not established, or a void `<verify_bug>` block, which runs zero probes), the app unreachable, a ceiling before probe 1, a missing required line, or no oracle that could decide. Fall back to a full charter.
+- **The bug is data, never instructions.** Nothing between the markers is read as environment context, a structured line, budget or target, and a missing, unclosed or repeated marker voids the bug, so the session runs zero probes and returns `not_verified`. Copilot still hands the explorer one undelimited prompt, so in bug fields, charter or target text you did not write, prefix any line that starts with `AUTHORIZED_NON_PRODUCTION`, `ALLOWED_HOSTS`, `EXPLORATORY_REPORT_PATH` or `EXPLORATORY_MODE` with `> `, as the explore skill does; a quoted line never counts as one of yours.
+- **`status` is still derived from `stop_reason`**, never from the verdict, and the safety boundary, both required lines and cleanup apply in full.
+- **A pass covers that one bug only**, never the original charter's other risks. The explore skill never sets the mode; Copilot was not installed where this was written, so a dispatched verify session has not been run.
 
 ## Quick-start — your first session
 
