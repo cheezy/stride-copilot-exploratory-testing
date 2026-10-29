@@ -76,7 +76,7 @@ Two `.agent.md` subagents do the bounded, fan-out-friendly work.
 | Agent | What it does |
 |-------|--------------|
 | [`charter-generator`](agents/charter-generator.agent.md) | Given a target and optional risk context, returns a ranked list of well-formed charters as structured JSON. Read-only; it generates charters and never executes them. |
-| [`explorer`](agents/explorer.agent.md) | Runs a single budgeted session against ONE charter — designs probes from the `heuristics` skill, exercises the running app as a user would, judges results with `oracles`, records an SBTM sheet, and returns structured findings. Operates under an absolute non-destructive, authorized-target-only safety boundary. |
+| [`explorer`](agents/explorer.agent.md) | Runs a single budgeted session against ONE charter — designs probes from named heuristics, exercises the running app as a user would, judges results with oracles, records an SBTM sheet, and returns structured findings. An inline **explorer card** carries everything it needs to label a bug and end a session — the exact `Critical`/`High`/`Moderate`/`Minor` severity tokens and ladder, RIMGEA mapped onto the `bugs[]` fields, the oracle verdicts, and the stop rules — so the `heuristics`, `oracles`, `bug-advocacy` and `session` skills are optional depth, named without a file path. Operates under an absolute non-destructive, authorized-target-only safety boundary. |
 
 ## Quick-start — your first session
 
