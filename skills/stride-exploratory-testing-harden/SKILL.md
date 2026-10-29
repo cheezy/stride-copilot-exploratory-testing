@@ -1,6 +1,6 @@
 ---
 name: stride-exploratory-testing-harden
-description: Use when an exploratory session has produced oracle-confirmed bugs and you want them turned into drafted regression checks so they cannot come back unnoticed — the bridge from Explored back to Checked. It reads a session's confirmed bugs from an explorer findings object, a paired session sheet, a debrief, or pasted findings, detects the project's own test framework from its markers and existing tests rather than assuming one, and drafts one check per convertible bug built from that bug's isolated minimal repro. It reports every bug it could not convert and why. Drafts are staged, never written into your suite; it never runs a draft and never claims one passes. Activate when the user wants to harden a session's findings, draft regression checks from confirmed bugs, or make sure a found bug cannot come back. Copilot port of the upstream /stride-exploratory-testing:harden command.
+description: Use when an exploratory session has produced oracle-confirmed bugs and you want them turned into drafted regression checks — the bridge from Explored back to Checked. Reads bugs from an explorer findings object, a paired session sheet, a debrief, or pasted findings, detects the project's own test framework, and drafts one check per convertible bug from its minimal repro, reporting every bug it could not convert and why. Drafts are staged, never written into your suite; it never runs a draft and never claims one passes. Activate when the user wants to harden a session's findings, draft regression checks from confirmed bugs, or make sure a found bug cannot come back.
 skills_version: "1.0"
 ---
 
@@ -70,7 +70,7 @@ Consult the `bug-advocacy` skill (`skills/bug-advocacy/SKILL.md`).
 
 Consult the `session` skill (`skills/session/SKILL.md`).
 
-`bug-advocacy` owns what `minimal_repro`, `worst_observed`, `generalization`, and `severity` mean, and its **Safety of bug advocacy** section owns two rules this skill inherits wholesale: a worse failure that cannot be *safely* demonstrated is never claimed, and every RIMGEA field carries observed system output, so the redaction rule binds all of them. `session` owns the artifact shapes you are about to parse and the **Session artifacts on disk** convention Step 7 writes under. Read both there rather than re-deriving them here.
+`bug-advocacy` owns what `minimal_repro`, `worst_observed`, `generalization`, and `severity` mean, and its **Safety of bug advocacy** section owns two rules this skill inherits wholesale: a worse failure that cannot be *safely* demonstrated is never claimed, and every RIMGEA field carries observed system output, so the redaction rule binds all of them. `session` owns the artifact shapes you are about to parse and the **Session artifacts on disk** convention Step 7 writes under, stated in full in its `references/session-artifacts.md`. Read both there rather than re-deriving them here.
 
 ### Step 3: Load the bugs
 
