@@ -116,6 +116,7 @@ The [`fixtures/`](fixtures/) directory holds worked examples that double as temp
 - [`example-charters.md`](fixtures/example-charters.md) — a ranked charter set plus a worked nightmare-headline-to-charter example and the "charter vs. check" anti-pattern.
 - [`example-session-sheet.md`](fixtures/example-session-sheet.md) — a worked **agent-run** session sheet: a session budget and the counts the explorer actually kept, in place of a duration and Task Breakdown Metric percentages.
 - [`example-debrief.md`](fixtures/example-debrief.md) — a worked debrief using both the Explored/Found/Unknown and PROOF templates.
+- [`example-explorer-output.json`](fixtures/example-explorer-output.json) — a complete `explorer` report in output contract `1.0`: a status derived from its `stop_reason`, bugs carrying `replicated` and `provisional`, typed `questions_risks` and `off_charter` elements, and a `known_bad` entry. `lib/test-structure.sh` and `lib/test-structure.ps1` validate it against the agent file's own tables; set `EXPLORER_OUTPUT` to the path of a real report to check that report by the same rules.
 
 For the full heuristics catalog, see the [`heuristics`](skills/heuristics/SKILL.md) skill (and the pointer in [HEURISTICS.md](HEURISTICS.md)) — it is the single source of truth and is deliberately not duplicated elsewhere.
 
