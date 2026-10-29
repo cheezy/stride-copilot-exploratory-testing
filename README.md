@@ -76,7 +76,7 @@ Two `.agent.md` subagents do the bounded, fan-out-friendly work.
 | Agent | What it does |
 |-------|--------------|
 | [`charter-generator`](agents/charter-generator.agent.md) | Given a target and optional risk context, returns a ranked list of well-formed charters as structured JSON. Read-only; it generates charters and never executes them. |
-| [`explorer`](agents/explorer.agent.md) | Runs a single budgeted session against ONE charter — designs probes from named heuristics, exercises the running app as a user would, judges results with oracles, records an SBTM sheet, and returns structured findings. An inline **explorer card** carries everything it needs to label a bug and end a session — the exact `Critical`/`High`/`Moderate`/`Minor` severity tokens and ladder, RIMGEA mapped onto the `bugs[]` fields, the oracle verdicts, and the stop rules — so the `heuristics`, `oracles`, `bug-advocacy` and `session` skills are optional depth, named without a file path. Operates under an absolute non-destructive, authorized-target-only safety boundary. |
+| [`explorer`](agents/explorer.agent.md) | Runs a single budgeted session against ONE charter — designs probes from named heuristics, exercises the running app as a user would, judges results with oracles, records an SBTM sheet, and returns structured findings. An inline **explorer card** carries everything it needs to label a bug and end a session — the exact `Critical`/`High`/`Moderate`/`Minor` severity tokens and ladder, RIMGEA mapped onto the `bugs[]` fields, the oracle verdicts, and the stop rules — so the `heuristics`, `oracles`, `bug-advocacy` and `session` skills are optional depth, named without a file path. It observes HTTP with `curl -q -sS -i`, never follows a redirect with `-L`, never judges a rendered view from source, and ends a charter that asks for an observation no tool of its own can make with `stop_reason: "no_observation_surface"` (`status: "blocked"`). Operates under an absolute non-destructive, authorized-target-only safety boundary. |
 
 ## Quick-start — your first session
 
@@ -161,7 +161,7 @@ This plugin is a faithful port of [`cheezy/stride-exploratory-testing`](https://
 | `commands/*.md` directory | `skills/<name>/SKILL.md` directories |
 | `agents/*.md` agent files | `agents/*.agent.md` agent files (Copilot extension) |
 | `AskUserQuestion` tool | The platform's question/selection UI |
-| `Read`, `Grep`, `Glob`, `Bash`, `WebFetch` tool names | Copilot tool nouns (`read`, `search`, `glob`, `run`); HTTP surfaces are exercised via `run` + `curl` |
+| `Read`, `Grep`, `Glob`, `Bash`, `WebFetch` tool names | Copilot tool nouns (`read`, `search`, `glob`, `run`); HTTP surfaces are exercised via `run` + `curl -q -sS -i`, never `-L`; the explorer has no fetch tool |
 
 ## License
 

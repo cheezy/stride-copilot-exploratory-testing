@@ -7,10 +7,12 @@
 # README-referenced fixtures, and the root docs. Then pins content: the
 # explorer card in agents/explorer.agent.md (markers, position, 4,096-byte
 # cap, severity tokens against bug-advocacy's four levels, stop_reason values
-# against the output contract, and path-free skill references). Last, the
+# against the output contract, and path-free skill references). Next, the
 # explorer output contract 1.0: fixtures/example-explorer-output.json (or a
 # real report named by EXPLORER_OUTPUT) against the agent file's own tables,
-# and the explore skill's result reading. Pure shell + python3 (for JSON) —
+# and the explore skill's result reading. Last, the explorer's observation
+# surface: curl -q -sS -i, no -L, no fetch tool, no_observation_surface, and the
+# 30,000-character body limit. Pure shell + python3 (for JSON) —
 # no network, no jq.
 #
 # Copilot conventions (differ from the Claude Code upstream):
@@ -401,7 +403,7 @@ say(set(derive.values()) == set(status_enum) and len(status_enum) == 3,
     "every status value is derived by the table (stopped_early is defined)",
     "derived=%s enum=%s" % (sorted(set(derive.values())), status_enum))
 EXPECTED = {"charter_quiet": "completed", "risk_acceptable": "completed", "probe_budget_exhausted": "stopped_early",
-            "tool_call_ceiling": "stopped_early", "blocked": "blocked"}
+            "tool_call_ceiling": "stopped_early", "blocked": "blocked", "no_observation_surface": "blocked"}
 say(derive == EXPECTED, "the status table maps each stop_reason exactly as contract 1.0 defines", "table=%s" % derive)
 # The mapping check must catch a stop_reason left without a row: drop one row in memory and re-check.
 dropped = re.findall(DERIVE_ROW, re.sub(r"^\| `tool_call_ceiling` \|.*\n", "", derive_text, flags=re.M), re.M)
@@ -557,11 +559,16 @@ def once_seen(d):
     d["bugs"][0]["replicated"] = "1/5"
 def not_established(d):
     d["bugs"][0]["replicated"] = "not established: the budget ran out before a re-run"
+def unobservable_part(d):
+    d["status"] = "blocked"
+    d["session_sheet"]["stop_reason"] = "no_observation_surface"
+    d["questions_risks"].append({"kind": "risk", "text": "rendered contrast of the error banner: no browser tool"})
 
 for label, fn in (("zero bugs", zero_bugs), ("no bugs and an empty known_bad array", empty_arrays),
                   ("blocked before the first probe", blocked_first),
                   ("replicated 2/3", two_of_three), ("a once-seen Critical (1/5)", once_seen),
-                  ("replicated not established with a reason", not_established)):
+                  ("replicated not established with a reason", not_established),
+                  ("no_observation_surface after probing the observable part, findings kept", unobservable_part)):
     e = validate(variant(fn))
     say(not e, "variant passes: " + label, "; ".join(e))
 
@@ -715,6 +722,146 @@ PY
   fi
 else
   nope "output-contract checks need agents/explorer.agent.md, fixtures/example-explorer-output.json and the explore skill" ""
+fi
+
+# --- Explorer observation surface -------------------------------------------
+#
+# The explorer judges only what a tool it actually holds can observe. HTTP is
+# observed with curl -q -sS -i and a redirect is never followed with -L; rendered
+# views are never judged from source; and a charter needing an observation no
+# tool can make ends no_observation_surface, which derives status blocked. The
+# frontmatter tools list stays read, search, glob and run, with no fetch tool,
+# and the agent body stays inside Copilot's 30,000-character prompt limit (the
+# custom agents configuration reference). Read-only: files are read as text.
+printf '\n'
+
+# A tools line names a fetch tool when any entry, case-insensitively, is web,
+# fetch, webfetch or websearch, contains "fetch", or is namespaced under web/.
+tools_have_fetch() {
+  printf '%s\n' "$1" | awk '
+    { s = tolower($0); sub(/^tools:[ \t]*/, "", s); gsub(/[][" \t]/, "", s); n = split(s, e, ",")
+      for (i = 1; i <= n; i++) if (e[i] == "web" || e[i] ~ /fetch/ || e[i] == "websearch" || e[i] ~ /^web\//) hit = 1 }
+    END { exit hit ? 0 : 1 }'
+}
+
+if [ -f "$EXPLORER" ] && [ -f "$EXPLORE_SKILL" ]; then
+  TOOLS_LINE=$(tr -d '\r' < "$EXPLORER" | awk '/^---$/ { c++; next } c == 1 && /^tools:/ { print; exit }')
+  if [ "$TOOLS_LINE" = 'tools: ["read", "search", "glob", "run"]' ]; then
+    ok "explorer tools are exactly read, search, glob and run"
+  else
+    nope "explorer tools must be read, search, glob and run" "found: ${TOOLS_LINE}"
+  fi
+  if [ -n "$TOOLS_LINE" ] && ! tools_have_fetch "$TOOLS_LINE"; then
+    ok "explorer tools list has no fetch tool"
+  else
+    nope "explorer tools list has a fetch tool, or no tools line" "found: ${TOOLS_LINE}"
+  fi
+  MISSED_FETCH=""
+  for extra in '"web"' '"WebFetch"' '"web/fetch"' '"fetch"'; do
+    tools_have_fetch "tools: [\"read\", \"search\", \"glob\", \"run\", ${extra}]" || MISSED_FETCH="${MISSED_FETCH} ${extra}"
+  done
+  if [ -z "$MISSED_FETCH" ]; then
+    ok "the fetch-tool check refuses a tools list that gains web or WebFetch"
+  else
+    nope "the fetch-tool check accepted a tools list with a fetch tool" "accepted:${MISSED_FETCH}"
+  fi
+
+  MISSING_HTTP=""
+  for needle in '## What you can observe' '**For HTTP, run `curl -q -sS -i` from your terminal tool.**' \
+      '`-q` must come first: it keeps a `~/.curlrc` from adding options behind your back.' \
+      '**Never add `-L` (or `--location`).**' \
+      'send a second request only when its scheme, host and port match a target the caller authorized' \
+      'a redirect pointing anywhere else is a result to write down, not an address to visit' \
+      'No fetch tool appears in this definition'"'"'s tool list'; do
+    grep -qF -e "$needle" "$EXPLORER" || MISSING_HTTP="${MISSING_HTTP} [${needle}]"
+  done
+  if [ -z "$MISSING_HTTP" ]; then
+    ok "explorer observes HTTP with curl -q -sS -i and never follows a redirect with -L"
+  else
+    nope "explorer is missing the curl or no -L rule" "missing:${MISSING_HTTP}"
+  fi
+
+  # No code span may offer a curl that follows redirects (-L, a bundle such as -sSL, or --location).
+  FOLLOWS=$(tr -d '\r' < "$EXPLORER" | awk '
+    { s = $0
+      while (match(s, /`[^`]*`/)) {
+        span = substr(s, RSTART, RLENGTH); s = substr(s, RSTART + RLENGTH)
+        if (span ~ /curl/ && (span ~ /[ \t]-[A-Za-z]*L/ || span ~ /--location/)) print NR ": " span
+      } }')
+  if [ -z "$FOLLOWS" ]; then
+    ok "explorer offers no curl invocation that follows redirects"
+  else
+    nope "explorer offers a curl invocation that follows redirects" "$FOLLOWS"
+  fi
+
+  # Every curl invocation in a code span starts with -q, so no ~/.curlrc applies.
+  NO_Q=$(tr -d '\r' < "$EXPLORER" | awk '
+    { s = $0
+      while (match(s, /`curl [^`]*`/)) {
+        span = substr(s, RSTART, RLENGTH); s = substr(s, RSTART + RLENGTH)
+        if (index(span, "`curl -q ") != 1) print NR ": " span
+      } }')
+  if [ -z "$NO_Q" ] && grep -qF -e '`curl -q -sS -i`' "$EXPLORER"; then
+    ok "every curl invocation in the explorer starts with -q"
+  else
+    nope "a curl invocation in the explorer does not start with -q" "${NO_Q:-no curl -q -sS -i span found}"
+  fi
+
+  if grep -qF -e '- **A charter with no HTTP surface** (a CLI, a file import, a log) is untouched by the curl rule and ends by the card'"'"'s ordinary stop rules.' "$EXPLORER"; then
+    ok "a charter with no HTTP surface is untouched by the curl rule and ends by its ordinary stop rules"
+  else
+    nope "explorer does not say a charter with no HTTP surface is untouched by the curl rule" ""
+  fi
+
+  MISSING_SURFACE=""
+  for needle in '**Only a tool you hold can show you a rendered page.**' \
+      '**Do not reach any of those verdicts from HTML, CSS or template source**' \
+      'A tool the environment context names is a hint about what the caller has, not a tool you hold.' \
+      '**When the charter asks for an observation no tool of yours can make, the session ends `no_observation_surface`.**' \
+      'then set `stop_reason: "no_observation_surface"`, whose status is `blocked`.' \
+      '| `no_observation_surface` | `blocked` |' \
+      '`no_observation_surface` is the exception: it overrides any stop that held alongside it.' \
+      '- **No tool of yours can make an observation the charter needs**'; do
+    grep -qF -e "$needle" "$EXPLORER" || MISSING_SURFACE="${MISSING_SURFACE} [${needle}]"
+  done
+  card_text | grep -qF -e '- `no_observation_surface`: a needed observation no tool of yours can make; overrides all; also set `status` to "blocked".' \
+    || MISSING_SURFACE="${MISSING_SURFACE} [card: no_observation_surface stop rule]"
+  if [ -z "$MISSING_SURFACE" ]; then
+    ok "explorer never judges rendered views from source and ends no_observation_surface as blocked"
+  else
+    nope "explorer is missing observation-surface wording" "missing:${MISSING_SURFACE}"
+  fi
+
+  MISSING_SKILL=""
+  for needle in '`blocked` and `no_observation_surface` give `blocked`' \
+      'which names the missing observation when the stop was `no_observation_surface`' '`curl -q -sS -i`'; do
+    grep -qF -e "$needle" "$EXPLORE_SKILL" || MISSING_SKILL="${MISSING_SKILL} [${needle}]"
+  done
+  if [ -z "$MISSING_SKILL" ]; then
+    ok "explore skill handles no_observation_surface and curl -q -sS -i"
+  else
+    nope "explore skill is missing observation-surface handling" "missing:${MISSING_SKILL}"
+  fi
+
+  # Characters after the closing frontmatter line, counted as Unicode code points.
+  if command -v python3 >/dev/null 2>&1; then
+    BODY_CHARS=$(python3 - "$EXPLORER" <<'PY2'
+import sys
+lines = open(sys.argv[1], encoding="utf-8-sig").read().replace("\r\n", "\n").split("\n")
+marks = [i for i, l in enumerate(lines) if l == "---"][:2]
+print(len("\n".join(lines[marks[1] + 1:])) if len(marks) == 2 and marks[0] == 0 else -1)
+PY2
+)
+    if [ "$BODY_CHARS" -ge 1 ] && [ "$BODY_CHARS" -le 30000 ]; then
+      ok "explorer agent body is within Copilot's 30,000-character prompt limit"
+    else
+      nope "explorer agent body is outside 1-30,000 characters" "measured ${BODY_CHARS}"
+    fi
+  else
+    nope "the body-length check needs python3 on PATH" ""
+  fi
+else
+  nope "observation-surface checks need agents/explorer.agent.md and the explore skill" ""
 fi
 
 # --- summary ----------------------------------------------------------------

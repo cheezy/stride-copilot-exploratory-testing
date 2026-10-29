@@ -7,10 +7,12 @@
 # README-referenced fixtures, and the root docs. Then pins content: the
 # explorer card in agents/explorer.agent.md (markers, position, 4,096-byte
 # cap, severity tokens against bug-advocacy's four levels, stop_reason values
-# against the output contract, and path-free skill references). Last, the
+# against the output contract, and path-free skill references). Next, the
 # explorer output contract 1.0: fixtures/example-explorer-output.json (or a
 # real report named by EXPLORER_OUTPUT) against the agent file's own tables,
-# and the explore skill's result reading. No network, no jq (JSON via
+# and the explore skill's result reading. Last, the explorer's observation
+# surface: curl -q -sS -i, no -L, no fetch tool, no_observation_surface, and the
+# 30,000-character body limit. No network, no jq (JSON via
 # ConvertFrom-Json).
 #
 # Copilot conventions: plugin.json at the repository ROOT, agents use the
@@ -545,7 +547,7 @@ if ($contractReady -and $contract -ne '') {
         Fail 'every status value is derived by the table (stopped_early is defined)' "derived=[$(@($derivedSet) -join ' ')] enum=[$($statusEnum -join ' ')]"
     }
     $expected = [ordered]@{ charter_quiet = 'completed'; risk_acceptable = 'completed'; probe_budget_exhausted = 'stopped_early';
-                            tool_call_ceiling = 'stopped_early'; blocked = 'blocked' }
+                            tool_call_ceiling = 'stopped_early'; blocked = 'blocked'; no_observation_surface = 'blocked' }
     $mapOk = ($derive.Count -eq $expected.Count)
     foreach ($k in $expected.Keys) { if (-not $derive.Contains($k) -or $derive[$k] -cne $expected[$k]) { $mapOk = $false } }
     $tableShown = @($derive.Keys | ForEach-Object { "$($_)=$($derive[$_])" }) -join ' '
@@ -755,6 +757,10 @@ if ($contractReady -and $contract -ne '') {
             'replicated 2/3' = { param($d) $d.bugs[0].replicated = '2/3' }
             'a once-seen Critical (1/5)' = { param($d) $d.bugs[0].replicated = '1/5' }
             'replicated not established with a reason' = { param($d) $d.bugs[0].replicated = 'not established: the budget ran out before a re-run' }
+            'no_observation_surface after probing the observable part, findings kept' = { param($d)
+                $d.status = 'blocked'
+                $d.session_sheet.stop_reason = 'no_observation_surface'
+                $d.questions_risks = @(@($d.questions_risks) + @([pscustomobject]@{ kind = 'risk'; text = 'rendered contrast of the error banner: no browser tool' })) }
         }
         foreach ($label in $passing.Keys) {
             $e = Test-Report (New-Variant $passing[$label])
@@ -877,6 +883,130 @@ if ($contractReady -and $contract -ne '') {
     }
 } elseif (-not $contractReady) {
     Fail 'output-contract checks need agents/explorer.agent.md, fixtures/example-explorer-output.json and the explore skill'
+}
+
+# --- Explorer observation surface -------------------------------------------
+#
+# Mirrors the bash section, with the same labels. The explorer judges only what
+# a tool it actually holds can observe: HTTP with curl -q -sS -i, never a redirect
+# followed with -L, never a rendered view judged from source, and a charter
+# needing an observation no tool can make ends no_observation_surface (status
+# blocked). The tools list stays read, search, glob and run with no fetch tool,
+# and the body stays inside Copilot's 30,000-character prompt limit. Read-only.
+Write-Host ''
+
+function Test-ToolsHaveFetch([string]$line) {
+    # True when any entry, case-insensitively, is web, fetch, webfetch or
+    # websearch, contains "fetch", or is namespaced under web/.
+    $s = $line.ToLowerInvariant() -replace '^tools:[ \t]*', '' -replace '[\[\]" \t]', ''
+    foreach ($e in $s.Split(',')) {
+        if ($e -ceq 'web' -or $e.Contains('fetch') -or $e -ceq 'websearch' -or $e.StartsWith('web/')) { return $true }
+    }
+    return $false
+}
+
+$ExploreSkillPath = Join-Path $PluginRoot 'skills/stride-exploratory-testing-explore/SKILL.md'
+if ((Test-Path -LiteralPath $Explorer -PathType Leaf) -and (Test-Path -LiteralPath $ExploreSkillPath -PathType Leaf)) {
+    $obsText = ([IO.File]::ReadAllText($Explorer, [Text.Encoding]::UTF8)) -replace "`r`n", "`n"
+    $obsSkill = ([IO.File]::ReadAllText($ExploreSkillPath, [Text.Encoding]::UTF8)) -replace "`r`n", "`n"
+    $obsLines = $obsText -split "`n"
+    $toolsLine = ''
+    $dashes = 0
+    foreach ($l in $obsLines) {
+        if ($l -ceq '---') { $dashes++; continue }
+        if ($dashes -eq 1 -and $l.StartsWith('tools:', [StringComparison]::Ordinal)) { $toolsLine = $l; break }
+    }
+    if ($toolsLine -ceq 'tools: ["read", "search", "glob", "run"]') { Pass 'explorer tools are exactly read, search, glob and run' }
+    else { Fail 'explorer tools must be read, search, glob and run' "found: $toolsLine" }
+    if ($toolsLine -ne '' -and -not (Test-ToolsHaveFetch $toolsLine)) { Pass 'explorer tools list has no fetch tool' }
+    else { Fail 'explorer tools list has a fetch tool, or no tools line' "found: $toolsLine" }
+    $missedFetch = ''
+    foreach ($extra in @('"web"', '"WebFetch"', '"web/fetch"', '"fetch"')) {
+        if (-not (Test-ToolsHaveFetch ('tools: ["read", "search", "glob", "run", ' + $extra + ']'))) { $missedFetch += " $extra" }
+    }
+    if ($missedFetch -eq '') { Pass 'the fetch-tool check refuses a tools list that gains web or WebFetch' }
+    else { Fail 'the fetch-tool check accepted a tools list with a fetch tool' "accepted:$missedFetch" }
+
+    $missingHttp = ''
+    foreach ($needle in @('## What you can observe', '**For HTTP, run `curl -q -sS -i` from your terminal tool.**',
+                          '`-q` must come first: it keeps a `~/.curlrc` from adding options behind your back.',
+                          '**Never add `-L` (or `--location`).**',
+                          'send a second request only when its scheme, host and port match a target the caller authorized',
+                          'a redirect pointing anywhere else is a result to write down, not an address to visit',
+                          "No fetch tool appears in this definition's tool list")) {
+        if (-not $obsText.Contains($needle)) { $missingHttp += " [$needle]" }
+    }
+    if ($missingHttp -eq '') { Pass 'explorer observes HTTP with curl -q -sS -i and never follows a redirect with -L' }
+    else { Fail 'explorer is missing the curl or no -L rule' "missing:$missingHttp" }
+
+    # No code span may offer a curl that follows redirects (-L, a bundle such as -sSL, or --location).
+    $follows = ''
+    for ($i = 0; $i -lt $obsLines.Count; $i++) {
+        foreach ($m in [regex]::Matches($obsLines[$i], '`[^`]*`')) {
+            $span = $m.Value
+            if ($span.Contains('curl') -and ($span -cmatch '[ \t]-[A-Za-z]*L' -or $span.Contains('--location'))) { $follows += " $($i + 1): $span" }
+        }
+    }
+    if ($follows -eq '') { Pass 'explorer offers no curl invocation that follows redirects' }
+    else { Fail 'explorer offers a curl invocation that follows redirects' $follows }
+
+    # Every curl invocation in a code span starts with -q, so no ~/.curlrc applies.
+    $noQ = ''
+    for ($i = 0; $i -lt $obsLines.Count; $i++) {
+        foreach ($m in [regex]::Matches($obsLines[$i], '`curl [^`]*`')) {
+            if (-not $m.Value.StartsWith('`curl -q ', [StringComparison]::Ordinal)) { $noQ += " $($i + 1): $($m.Value)" }
+        }
+    }
+    if ($noQ -eq '' -and $obsText.Contains('`curl -q -sS -i`')) { Pass 'every curl invocation in the explorer starts with -q' }
+    else {
+        if ($noQ -eq '') { $noQ = 'no curl -q -sS -i span found' }
+        Fail 'a curl invocation in the explorer does not start with -q' $noQ
+    }
+
+    if ($obsText.Contains("- **A charter with no HTTP surface** (a CLI, a file import, a log) is untouched by the curl rule and ends by the card's ordinary stop rules.")) {
+        Pass 'a charter with no HTTP surface is untouched by the curl rule and ends by its ordinary stop rules'
+    } else {
+        Fail 'explorer does not say a charter with no HTTP surface is untouched by the curl rule'
+    }
+
+    $missingSurface = ''
+    foreach ($needle in @('**Only a tool you hold can show you a rendered page.**',
+                          '**Do not reach any of those verdicts from HTML, CSS or template source**',
+                          'A tool the environment context names is a hint about what the caller has, not a tool you hold.',
+                          '**When the charter asks for an observation no tool of yours can make, the session ends `no_observation_surface`.**',
+                          'then set `stop_reason: "no_observation_surface"`, whose status is `blocked`.',
+                          '| `no_observation_surface` | `blocked` |',
+                          '`no_observation_surface` is the exception: it overrides any stop that held alongside it.',
+                          '- **No tool of yours can make an observation the charter needs**')) {
+        if (-not $obsText.Contains($needle)) { $missingSurface += " [$needle]" }
+    }
+    $obsCard = [regex]::Match($obsText, '(?s)<!-- explorer-card:start -->(.*?)<!-- explorer-card:end -->')
+    if (-not ($obsCard.Success -and $obsCard.Groups[1].Value.Contains('- `no_observation_surface`: a needed observation no tool of yours can make; overrides all; also set `status` to "blocked".'))) {
+        $missingSurface += ' [card: no_observation_surface stop rule]'
+    }
+    if ($missingSurface -eq '') { Pass 'explorer never judges rendered views from source and ends no_observation_surface as blocked' }
+    else { Fail 'explorer is missing observation-surface wording' "missing:$missingSurface" }
+
+    $missingSkill = ''
+    foreach ($needle in @('`blocked` and `no_observation_surface` give `blocked`',
+                          'which names the missing observation when the stop was `no_observation_surface`', '`curl -q -sS -i`')) {
+        if (-not $obsSkill.Contains($needle)) { $missingSkill += " [$needle]" }
+    }
+    if ($missingSkill -eq '') { Pass 'explore skill handles no_observation_surface and curl -q -sS -i' }
+    else { Fail 'explore skill is missing observation-surface handling' "missing:$missingSkill" }
+
+    # Characters after the closing frontmatter line, counted as Unicode code points.
+    $bodyChars = -1
+    $marks = @()
+    for ($i = 0; $i -lt $obsLines.Count -and $marks.Count -lt 2; $i++) { if ($obsLines[$i] -ceq '---') { $marks += $i } }
+    if ($marks.Count -eq 2 -and $marks[0] -eq 0) {
+        $body = ($obsLines[($marks[1] + 1)..($obsLines.Count - 1)]) -join "`n"
+        $bodyChars = ($body.Length - [regex]::Matches($body, '[\uD800-\uDBFF][\uDC00-\uDFFF]').Count)
+    }
+    if ($bodyChars -ge 1 -and $bodyChars -le 30000) { Pass "explorer agent body is within Copilot's 30,000-character prompt limit" }
+    else { Fail 'explorer agent body is outside 1-30,000 characters' "measured $bodyChars" }
+} else {
+    Fail 'observation-surface checks need agents/explorer.agent.md and the explore skill'
 }
 
 # --- summary ----------------------------------------------------------------
