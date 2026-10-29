@@ -76,7 +76,27 @@ Two `.agent.md` subagents do the bounded, fan-out-friendly work.
 | Agent | What it does |
 |-------|--------------|
 | [`charter-generator`](agents/charter-generator.agent.md) | Given a target and optional risk context, returns a ranked list of well-formed charters as structured JSON. Read-only; it generates charters and never executes them. |
-| [`explorer`](agents/explorer.agent.md) | Runs a single budgeted session against ONE charter — designs probes from named heuristics, exercises the running app as a user would, judges results with oracles, records an SBTM sheet, and returns structured findings. An inline **explorer card** carries everything it needs to label a bug and end a session — the exact `Critical`/`High`/`Moderate`/`Minor` severity tokens and ladder, RIMGEA mapped onto the `bugs[]` fields, the oracle verdicts, and the stop rules — so the `heuristics`, `oracles`, `bug-advocacy` and `session` skills are optional depth, named without a file path. It observes HTTP with `curl -q -sS -i`, never follows a redirect with `-L`, never judges a rendered view from source, and ends a charter that asks for an observation no tool of its own can make with `stop_reason: "no_observation_surface"` (`status: "blocked"`). Operates under an absolute non-destructive, authorized-target-only safety boundary. |
+| [`explorer`](agents/explorer.agent.md) | Runs a single budgeted session against ONE charter — designs probes from named heuristics, exercises the running app as a user would, judges results with oracles, records an SBTM sheet, and returns structured findings. An inline **explorer card** carries everything it needs to label a bug and end a session — the exact `Critical`/`High`/`Moderate`/`Minor` severity tokens and ladder, RIMGEA mapped onto the `bugs[]` fields, the oracle verdicts, and the stop rules — so the `heuristics`, `oracles`, `bug-advocacy` and `session` skills are optional depth, named without a file path. It observes HTTP with `curl -q -sS -i`, never follows a redirect with `-L`, never judges a rendered view from source, and ends a charter that asks for an observation no tool of its own can make with `stop_reason: "no_observation_surface"` (`status: "blocked"`). Operates under an absolute non-destructive, authorized-target-only safety boundary. Given an [`EXPLORATORY_REPORT_PATH`](#explorer-report-file-exploratory_report_path) line, it writes the full findings to that one file and replies with a short summary. |
+
+### Explorer report file (`EXPLORATORY_REPORT_PATH`)
+
+A caller other than the explore skill can keep the explorer's full findings out of its own context. Give the explorer one line of its own in the environment context, never in the charter:
+
+```text
+EXPLORATORY_REPORT_PATH=/absolute/path/to/report.json
+```
+
+The explorer then writes the complete contract `1.0` findings JSON to that file in one `execute` command and replies with plain text of at most 2,048 bytes and no ```json fence: `report:`, `contract_version:`, `status:`, `stop_reason:`, the probe and tool-call counts, the bug counts by severity with the `questions_risks`, `off_charter` and `known_bad` counts, and one `<Severity> | replicated: <yes|no|not established> | <summary>` line per bug. Past the bound, whole bug lines are dropped from the lowest severity, never cut short. Read the findings from the path you supplied, never one the summary names.
+
+- **The path must come from you.** It must be absolute, with no `..` segment, quote or control character, and never built from app content, the charter or `known_issues`; two `EXPLORATORY_REPORT_PATH` lines are refused.
+- **Quote charter lines that look like it.** Copilot hands the explorer one undelimited prompt, so when you pass a charter or target text you did not write, prefix any line in it that starts with `EXPLORATORY_REPORT_PATH` with `> `, as the explore skill does, and it cannot be read as your line.
+- **It must not exist yet.** An existing file, directory or symlink is refused, so a write never overwrites or follows a link and two sessions never overwrite each other. A missing parent directory gets one `mkdir -p` retry. Put the report in a directory only you can write to, never straight under a shared one such as `/tmp`: the explorer checks the file, not its parent directories.
+- **Nothing is lost on failure.** A refused or failed write replies `report: NOT WRITTEN - <reason>` followed by the full fenced JSON.
+- **No path, no change.** The reply is the fenced JSON, as before. The explore skill never passes a path, reads every result inline, and quotes any `EXPLORATORY_REPORT_PATH` line in operator, target or charter text with `> `.
+
+To check a written report against the contract, run `EXPLORER_OUTPUT=<path> bash lib/test-structure.sh`.
+
+**Why `execute` and not an edit tool.** GitHub's [custom agents configuration reference](https://docs.github.com/en/copilot/reference/custom-agents-configuration) lists `edit` (compatible names `Edit`, `MultiEdit`, `Write` and `NotebookEdit`) with no way to scope it to one path, so turning it on would let the explorer edit any file. The explorer therefore holds `read`, `search`, `glob` and `execute`, writes the report through a quoted heredoc under `set -o noclobber`, and states the one-path rule in its own prose, pinned by `lib/test-structure.sh` and `lib/test-structure.ps1`. The Copilot CLI's `--allow-tool` flag can allow a write to one file, as its [allowing tools](https://docs.github.com/en/copilot/how-tos/copilot-cli/use-copilot-cli/allowing-tools) page shows, but that is the caller's command line, not something an agent file can declare. `execute` is the reference's name for the shell tool (with `shell`, `Bash` and `powershell` as compatible names); it lists no `run` and ignores names it does not recognize, which is why the explorer no longer declares `run`. If the runtime still withholds a terminal, every write fails and the reply is `report: NOT WRITTEN - …` plus the fenced JSON. Copilot was not installed where this was written, so a dispatched round trip has not been run.
 
 ## Quick-start — your first session
 
@@ -161,7 +181,7 @@ This plugin is a faithful port of [`cheezy/stride-exploratory-testing`](https://
 | `commands/*.md` directory | `skills/<name>/SKILL.md` directories |
 | `agents/*.md` agent files | `agents/*.agent.md` agent files (Copilot extension) |
 | `AskUserQuestion` tool | The platform's question/selection UI |
-| `Read`, `Grep`, `Glob`, `Bash`, `WebFetch` tool names | Copilot tool nouns (`read`, `search`, `glob`, `run`); HTTP surfaces are exercised via `run` + `curl -q -sS -i`, never `-L`; the explorer has no fetch tool |
+| `Read`, `Grep`, `Glob`, `Bash`, `WebFetch` tool names | Copilot tool nouns (`read`, `search`, `glob`, `execute`); HTTP surfaces are exercised via `execute` + `curl -q -sS -i`, never `-L`; the explorer has no fetch tool |
 
 ## License
 

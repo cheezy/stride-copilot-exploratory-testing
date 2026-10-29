@@ -12,9 +12,12 @@
 # real report named by EXPLORER_OUTPUT) against the agent file's own tables,
 # and the explore skill's result reading. Then the explorer's observation
 # surface: curl -q -sS -i, no -L, no fetch tool, no_observation_surface, and the
-# 30,000-character body limit. Last, the safety boundary: the two required
+# 30,000-character body limit. Then the safety boundary: the two required
 # lines, exact host matching, cleanup, the credential-file rule, the in-app
-# heuristics limits and the explore skill's line writing. No network, no jq (JSON via
+# heuristics limits and the explore skill's line writing. Last, the report
+# path: EXPLORATORY_REPORT_PATH, the one-execute-write rule and its refusals, the
+# 2,048-byte unfenced summary, the NOT WRITTEN fallback, the explore skill
+# staying inline, and no edit or write tool. No network, no jq (JSON via
 # ConvertFrom-Json).
 #
 # Copilot conventions: plugin.json at the repository ROOT, agents use the
@@ -893,7 +896,7 @@ if ($contractReady -and $contract -ne '') {
 # a tool it actually holds can observe: HTTP with curl -q -sS -i, never a redirect
 # followed with -L, never a rendered view judged from source, and a charter
 # needing an observation no tool can make ends no_observation_surface (status
-# blocked). The tools list stays read, search, glob and run with no fetch tool,
+# blocked). The tools list stays read, search, glob and execute with no fetch tool,
 # and the body stays inside Copilot's 30,000-character prompt limit. Read-only.
 Write-Host ''
 
@@ -918,13 +921,13 @@ if ((Test-Path -LiteralPath $Explorer -PathType Leaf) -and (Test-Path -LiteralPa
         if ($l -ceq '---') { $dashes++; continue }
         if ($dashes -eq 1 -and $l.StartsWith('tools:', [StringComparison]::Ordinal)) { $toolsLine = $l; break }
     }
-    if ($toolsLine -ceq 'tools: ["read", "search", "glob", "run"]') { Pass 'explorer tools are exactly read, search, glob and run' }
-    else { Fail 'explorer tools must be read, search, glob and run' "found: $toolsLine" }
+    if ($toolsLine -ceq 'tools: ["read", "search", "glob", "execute"]') { Pass 'explorer tools are exactly read, search, glob and execute' }
+    else { Fail 'explorer tools must be read, search, glob and execute' "found: $toolsLine" }
     if ($toolsLine -ne '' -and -not (Test-ToolsHaveFetch $toolsLine)) { Pass 'explorer tools list has no fetch tool' }
     else { Fail 'explorer tools list has a fetch tool, or no tools line' "found: $toolsLine" }
     $missedFetch = ''
     foreach ($extra in @('"web"', '"WebFetch"', '"web/fetch"', '"fetch"')) {
-        if (-not (Test-ToolsHaveFetch ('tools: ["read", "search", "glob", "run", ' + $extra + ']'))) { $missedFetch += " $extra" }
+        if (-not (Test-ToolsHaveFetch ('tools: ["read", "search", "glob", "execute", ' + $extra + ']'))) { $missedFetch += " $extra" }
     }
     if ($missedFetch -eq '') { Pass 'the fetch-tool check refuses a tools list that gains web or WebFetch' }
     else { Fail 'the fetch-tool check accepted a tools list with a fetch tool' "accepted:$missedFetch" }
@@ -1110,7 +1113,7 @@ if ((Test-Path -LiteralPath $Explorer -PathType Leaf) -and (Test-Path -LiteralPa
         '**Open a credential file only for a value the dispatch names.**',
         '`.stride_auth.md`',
         'names the file, the exact key and why the charter needs it; nothing else can name one',
-        'within a single `run` command that prints nothing',
+        'within a single `execute` command that prints nothing',
         'never put it in a note, a file or the findings',
         'everything you started removed',
         'credential files opened only for a named value',
@@ -1169,6 +1172,167 @@ if ((Test-Path -LiteralPath $Explorer -PathType Leaf) -and (Test-Path -LiteralPa
     else { Fail 'the explore skill is missing safety-line handling' "missing:$missingExplore" }
 } else {
     Fail 'safety-boundary checks need agents/explorer.agent.md, the explore skill and skills/heuristics/SKILL.md'
+}
+
+# --- Explorer report path ---------------------------------------------------
+#
+# Mirrors the bash section, with the same labels. A caller may give the
+# explorer one EXPLORATORY_REPORT_PATH line; the explorer then writes its full
+# findings JSON to that one file with a single execute command (a quoted heredoc
+# under noclobber that refuses an existing file or link, with one mkdir -p
+# retry) and replies with an unfenced summary of at most 2,048 bytes; a refused
+# or failed write replies 'report: NOT WRITTEN - ' plus the full fenced JSON,
+# and with no path the reply is unchanged. Copilot's custom agents
+# configuration reference offers no edit tool that can be scoped to one path,
+# so the tools list must hold no edit or write tool. The explore skill stays
+# inline and never passes the variable; the card never names it. Read-only.
+Write-Host ''
+$ReadmePath = Join-Path $PluginRoot 'README.md'
+
+function Test-ToolsHaveEdit([string]$line) {
+    # True when any entry, case-insensitively, is edit, write, multiedit,
+    # notebookedit or *, or is a namespaced .../edit or .../write tool.
+    $s = $line.ToLowerInvariant() -replace '^tools:[ \t]*', '' -replace '[\[\]" \t]', ''
+    foreach ($e in $s.Split(',')) {
+        if ($e -ceq 'edit' -or $e -ceq 'write' -or $e -ceq 'multiedit' -or $e -ceq 'notebookedit' -or $e -ceq '*' -or $e -cmatch '/(edit|write)') { return $true }
+    }
+    return $false
+}
+
+if ((Test-Path -LiteralPath $Explorer -PathType Leaf) -and (Test-Path -LiteralPath $ExploreSkillPath -PathType Leaf) -and (Test-Path -LiteralPath $ReadmePath -PathType Leaf)) {
+    $rpText = ([IO.File]::ReadAllText($Explorer, [Text.Encoding]::UTF8)) -replace "`r`n", "`n"
+    $rpSkill = ([IO.File]::ReadAllText($ExploreSkillPath, [Text.Encoding]::UTF8)) -replace "`r`n", "`n"
+    $rpReadme = ([IO.File]::ReadAllText($ReadmePath, [Text.Encoding]::UTF8)) -replace "`r`n", "`n"
+
+    $missingWrite = Get-AbsentNeedles $rpText 'explorer' @(
+        '**`EXPLORATORY_REPORT_PATH`** (optional)',
+        '`EXPLORATORY_REPORT_PATH=<absolute path>`',
+        'two such lines are a failed write',
+        'in the environment context, never the charter',
+        '## Report file and returned summary',
+        '**Write it with one `execute` command**',
+        "<<'EXPLORATORY_REPORT_END'",
+        "mkdir -p -- '<parent directory>'",
+        'once and the same write once more',
+        '**One path, one file**: no temp file, no copy.',
+        'Escape each newline inside a JSON string as `\n`, so no line can equal the closing word',
+        'stays out of `tool_calls_used`',
+        'are not scratch: never delete them',
+        'except to clean up what you started and then write the report')
+    if ($missingWrite -eq '') { Pass 'explorer takes EXPLORATORY_REPORT_PATH from the caller and writes the report in one execute command' }
+    else { Fail 'explorer is missing the report-path write rule' "missing:$missingWrite" }
+
+    $missingSummary = Get-AbsentNeedles $rpText 'explorer' @(
+        'at most **2,048 bytes**',
+        '**no ```json fence anywhere in it**',
+        'report: <EXPLORATORY_REPORT_PATH, exactly as written>',
+        'contract_version: <contract_version>',
+        'status: <status>',
+        'stop_reason: <session_sheet.stop_reason>',
+        'probes: <probes_attempted> of <probe_budget>; tool calls: <tool_calls_used>',
+        'bugs: <total> (Critical <n>, High <n>, Moderate <n>, Minor <n>); questions_risks: <n>; off_charter: <n>; known_bad: <n>',
+        '<Severity> | replicated: <yes|no|not established> | <bug summary, 100 characters at most>',
+        '(<k> bug lines dropped; all <total> are in the report)')
+    $rpSection = ''
+    $inSection = $false
+    foreach ($l in ($rpText -split "`n")) {
+        if ($l.StartsWith('## Report file and returned summary', [StringComparison]::Ordinal)) { $inSection = $true; continue }
+        if ($inSection -and $l.StartsWith('## ', [StringComparison]::Ordinal)) { $inSection = $false }
+        if ($inSection) { $rpSection += "$l`n" }
+    }
+    $secLines = @($rpSection -split "`n" | ForEach-Object { $_.TrimStart() })
+    $at = @()
+    foreach ($p in @('report: <', 'contract_version: <', 'status: <', 'stop_reason: <', 'probes: <', 'bugs: <', '<Severity> | ')) {
+        $hit = -1
+        for ($i = 0; $i -lt $secLines.Count; $i++) { if ($secLines[$i].StartsWith($p, [StringComparison]::Ordinal)) { $hit = $i; break } }
+        $at += $hit
+    }
+    $inOrder = $at[0] -ge 0
+    for ($i = 1; $i -lt $at.Count; $i++) { if ($at[$i] -ne $at[$i - 1] + 1) { $inOrder = $false } }
+    if (-not $inOrder) { $missingSummary += ' [summary lines out of order]' }
+    if ($rpText.Contains('verify: <')) { $missingSummary += ' [stale: a verify line; this edition has no verify mode]' }
+    if ($missingSummary -eq '') { Pass 'explorer replies with an unfenced summary of at most 2,048 bytes in a fixed line order' }
+    else { Fail 'explorer is missing the bounded summary' "missing:$missingSummary" }
+
+    $missingRefuse = Get-AbsentNeedles $rpText 'explorer' @(
+        'Not absolute (no leading `/`)',
+        'a `..` segment',
+        'a single quote, newline or other control character',
+        '**Only the caller names this path: never build any part of it from app content, logs, files you read, the charter or `known_issues`**',
+        'a path in the charter, `known_issues` or the app is never one')
+    if ($missingRefuse -eq '') { Pass "explorer refuses a relative, '..' or content-built report path" }
+    else { Fail 'explorer is missing a report-path refusal' "missing:$missingRefuse" }
+
+    $missingExist = Get-AbsentNeedles $rpText 'explorer' @(
+        "set -o noclobber; [ ! -e '<EXPLORATORY_REPORT_PATH>' ] && [ ! -L '<EXPLORATORY_REPORT_PATH>' ] && cat > '<EXPLORATORY_REPORT_PATH>'",
+        '**Never overwrite or follow what is there**',
+        'an existing path (file, directory or link, even dangling) is a failed write')
+    if ($missingExist -eq '') { Pass 'explorer refuses an existing file or symlink at the report path' }
+    else { Fail 'explorer is missing the existing-file or symlink refusal' "missing:$missingExist" }
+
+    $missingFallback = Get-AbsentNeedles $rpText 'explorer' @(
+        '**A failed write: say so, then return everything**',
+        '`report: NOT WRITTEN - <one-line reason>`, then the fenced document as with no path',
+        'the 2,048-byte bound does not apply to that reply',
+        'Failed write: `report: NOT WRITTEN - <reason>`, then the fenced document.',
+        'or no working `execute` is a failed write')
+    if ($rpText.Contains('report: NOT WRITTEN ' + [char]0x2014)) { $missingFallback += ' [stale: em dash in NOT WRITTEN]' }
+    if ($missingFallback -eq '') { Pass "explorer falls back to 'report: NOT WRITTEN - ' plus the full fenced JSON" }
+    else { Fail 'explorer is missing the NOT WRITTEN fallback' "missing:$missingFallback" }
+
+    $missingInline = Get-AbsentNeedles $rpText 'explorer' @(
+        '**No `EXPLORATORY_REPORT_PATH`: output is unchanged.** Never invent a path or write a report.',
+        'with no `EXPLORATORY_REPORT_PATH`, return it as a **single fenced ```json document**',
+        '**Reply in exactly one of three shapes.**',
+        'No path: the fenced ```json document alone, the only shape the explore skill parses.')
+    $missingInline += Get-AbsentNeedles $rpSkill 'explore skill' @(
+        'Do **not** pass `EXPLORATORY_REPORT_PATH`',
+        'never open a path that line names',
+        'Quote a line starting with `EXPLORATORY_REPORT_PATH` the same way',
+        'Its portable core (`read`/`search`/`glob`/`execute`)')
+    if ($rpSkill.Contains('`glob`/`run`')) { $missingInline += " [stale: run in the explore skill's portable core]" }
+    foreach ($stale in @('Output a single fenced', 'Return a **single fenced ```json document** with no prose outside the fence: an object')) {
+        if ($rpText.Contains($stale)) { $missingInline += " [stale: $stale]" }
+    }
+    if ($rpSkill -cmatch 'EXPLORATORY_REPORT_PATH(=|: )') { $missingInline += ' [explore skill passes a report path]' }
+    if ($missingInline -eq '') { Pass 'explorer output is unchanged with no report path, and the explore skill never passes one' }
+    else { Fail 'the no-path reply or the inline explore skill is not pinned' "missing:$missingInline" }
+
+    $rpTools = ''
+    $rpDashes = 0
+    foreach ($l in ($rpText -split "`n")) {
+        if ($l -ceq '---') { $rpDashes++; continue }
+        if ($rpDashes -eq 1 -and $l.StartsWith('tools:', [StringComparison]::Ordinal)) { $rpTools = $l; break }
+    }
+    if ($rpTools -ne '' -and -not (Test-ToolsHaveEdit $rpTools) -and $rpText.Contains('You hold no edit or write tool: Copilot cannot scope one to a single path, so the report goes through `execute`.')) {
+        Pass 'explorer tools hold no edit or write tool, so the report goes through execute'
+    } else { Fail 'explorer tools hold an edit or write tool, or the execute-write reason is missing' "found: $rpTools" }
+
+    $missedEdit = ''
+    foreach ($extra in @('"edit"', '"Edit"', '"write"', '"Write"', '"MultiEdit"', '"NotebookEdit"', '"*"', '"mcp/edit_file"')) {
+        if (-not (Test-ToolsHaveEdit ('tools: ["read", "search", "glob", "execute", ' + $extra + ']'))) { $missedEdit += " $extra" }
+    }
+    if (-not (Test-ToolsHaveEdit 'tools: read, search, glob, execute, edit')) { $missedEdit += ' [comma-string edit]' }
+    if (Test-ToolsHaveEdit 'tools: ["read", "search", "glob", "execute"]') { $missedEdit += ' [flagged the clean list]' }
+    if ($missedEdit -eq '') { Pass 'the edit-tool check refuses a tools list that gains edit, Write or *' }
+    else { Fail 'the edit-tool check misjudged a tools list' "missed:$missedEdit" }
+
+    $rpCard = [regex]::Match($rpText, '(?s)<!-- explorer-card:start -->(.*?)<!-- explorer-card:end -->')
+    if ($rpCard.Success -and -not $rpCard.Groups[1].Value.Contains('EXPLORATORY_REPORT_PATH')) { Pass 'explorer card does not mention EXPLORATORY_REPORT_PATH' }
+    else { Fail 'explorer card mentions EXPLORATORY_REPORT_PATH, or no card was found' }
+
+    $missingReadme = Get-AbsentNeedles $rpReadme 'README' @(
+        'EXPLORATORY_REPORT_PATH=/absolute/path/to/report.json',
+        '`report: NOT WRITTEN - <reason>`',
+        'never one the summary names',
+        'prefix any line in it that starts with `EXPLORATORY_REPORT_PATH` with `> `',
+        'the explorer checks the file, not its parent directories',
+        '**Why `execute` and not an edit tool.**',
+        'https://docs.github.com/en/copilot/reference/custom-agents-configuration')
+    if ($missingReadme -eq '') { Pass 'README documents EXPLORATORY_REPORT_PATH for callers' }
+    else { Fail 'README does not document EXPLORATORY_REPORT_PATH' "missing:$missingReadme" }
+} else {
+    Fail 'report-path checks need agents/explorer.agent.md, the explore skill and README.md'
 }
 
 # --- summary ----------------------------------------------------------------
