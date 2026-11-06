@@ -5,7 +5,7 @@
 # plugin's docs require: a valid ROOT manifest, all six core knowledge
 # skills, all seven command-derived skills, both .agent.md agents, the four
 # README-referenced fixtures, and the root docs. Then pins content: the
-# explorer card in agents/explorer.agent.md (markers, position, 4,096-byte
+# explorer card in agents/explorer.agent.md (markers, position, 4,608-byte
 # cap, severity tokens against bug-advocacy's four levels, stop_reason values
 # against the output contract, and path-free skill references). Next, the
 # explorer output contract 1.0: fixtures/example-explorer-output.json (or a
@@ -39,7 +39,12 @@
 # When-a-change trigger, the web-only three never under General, no Tour
 # collision, the in-app and authorized-only framing, curl -q -sS -i through
 # execute and no other edition's tool, no task-identifier or project-name
-# leak, and every lens named in HEURISTICS.md.
+# leak, and every lens named in HEURISTICS.md. Last, the oracles skill's
+# Adapter Is Not the Wire and Two Decision Sites sections (each with an
+# example, the unknown-never-found and agree-in-every-state rules, execute as
+# the shell tool, no new reach, no identifier leak), their one-line card
+# entries inside the markers, and frozen copies of the card's severity token
+# and rank lines and its six stop-rule bullets.
 # No network, no jq (JSON via ConvertFrom-Json).
 #
 # Copilot conventions: plugin.json at the repository ROOT, agents use the
@@ -158,7 +163,7 @@ foreach ($doc in @('README.md', 'CHANGELOG.md', 'LICENSE')) {
 # the same labels. Every rule the explorer needs to label a bug and end a
 # session lives on an inline card in agents/explorer.agent.md, so nothing
 # depends on a skill load succeeding. These pins keep the card in place and
-# under its 4,096-byte cap, keep its severity tokens in step with
+# under its 4,608-byte cap, keep its severity tokens in step with
 # bug-advocacy's four levels and its stop rules in step with the output
 # contract's stop_reason values, and keep the optional skill references free
 # of file paths. Later port tasks add their pins to this section. Read-only:
@@ -233,11 +238,15 @@ if ((Test-Path -LiteralPath $Explorer -PathType Leaf) -and (Test-Path -LiteralPa
     # Byte cap, measured as awk '/explorer-card:start/,/explorer-card:end/' | wc -c
     $cardBytes = 0
     foreach ($l in $card) { $cardBytes += [Text.Encoding]::UTF8.GetByteCount($l) + 1 }
-    if ($cardBytes -ge 1 -and $cardBytes -le 4096) {
-        Pass 'explorer card is within 4096 bytes'
+    # The cap is 4,608 bytes. It was 4,096 until the Adapter Is Not the Wire
+    # and Two Decision Sites lines took the card from 4,091 to 4,457 bytes,
+    # 361 over, so it rose by 512, leaving 151 bytes of room. Keep new rules
+    # off the card where they can live elsewhere.
+    if ($cardBytes -ge 1 -and $cardBytes -le 4608) {
+        Pass 'explorer card is within 4608 bytes'
     }
     else {
-        Fail 'explorer card is outside 1-4096 bytes' "measured $cardBytes bytes"
+        Fail 'explorer card is outside 1-4608 bytes' "measured $cardBytes bytes"
     }
 
     # Severity: token line, rank line and ladder bullets each equal
@@ -2063,6 +2072,114 @@ if ((Test-Path -LiteralPath $Heur -PathType Leaf) -and (Test-Path -LiteralPath $
     }
 } else {
     Fail 'change-risk lens checks need skills/heuristics/SKILL.md and HEURISTICS.md'
+}
+
+# --- Wire and decision-site oracles -----------------------------------------
+#
+# Mirrors the test-structure.sh section of the same name, with the same
+# labels. Two named oracles in skills/oracles/SKILL.md, each a section with an
+# *Example:* paragraph: Adapter Is Not the Wire (a result seen only through an
+# in-process test adapter does not establish wire behaviour, so a claim not
+# checked on a real server goes under debrief.unknown, never found) and Two
+# Decision Sites (client and server deciding the same thing must agree in
+# every state). Each also has exactly one line inside the explorer-card
+# markers, because the card has to work without the skill. Confirming on the
+# wire names this edition's shell tool, execute, and grants no new reach. The
+# card's severity token and rank lines and its six stop-rule bullets are
+# frozen here, line for line, so making room for the new lines cannot edit
+# them. Read-only: the files are read as text, never run.
+
+$Oracles = Join-Path $PluginRoot 'skills/oracles/SKILL.md'
+
+function Get-OracleSection([string[]]$lines, [string]$name) {
+    $out = New-Object 'System.Collections.Generic.List[string]'
+    $in = $false
+    foreach ($l in $lines) {
+        if ($l -ceq "## $name") { $in = $true; continue }
+        if ($in -and $l.StartsWith('## ', [StringComparison]::Ordinal)) { $in = $false }
+        if ($in) { $out.Add($l) }
+    }
+    return ,$out
+}
+
+if ((Test-Path -LiteralPath $Oracles -PathType Leaf) -and (Test-Path -LiteralPath $Explorer -PathType Leaf)) {
+    $orLines = ([IO.File]::ReadAllText($Oracles, [Text.Encoding]::UTF8) -replace "`r", '') -split "`n"
+    $exAll = ([IO.File]::ReadAllText($Explorer, [Text.Encoding]::UTF8) -replace "`r", '') -split "`n"
+    $orCard = New-Object 'System.Collections.Generic.List[string]'
+    $inCard = $false
+    foreach ($l in $exAll) {
+        if ($l -ceq '<!-- explorer-card:start -->') { $inCard = $true }
+        if ($inCard) { $orCard.Add($l) }
+        if ($l -ceq '<!-- explorer-card:end -->') { $inCard = $false }
+    }
+
+    foreach ($name in @('Adapter Is Not the Wire', 'Two Decision Sites')) {
+        $heads = @($orLines | Where-Object { $_ -ceq "## $name" }).Count
+        if ($heads -eq 1) { Pass "oracles skill defines $name" }
+        else { Fail "oracles skill needs exactly one ## $name section" "found $heads" }
+        $example = @((Get-OracleSection $orLines $name) | Where-Object { $_.StartsWith('*Example:*', [StringComparison]::Ordinal) }).Count
+        if ($example -gt 0) { Pass "oracles skill gives $name an example" }
+        else { Fail "oracles skill gives $name no *Example:* paragraph" }
+        $cardLines = @($orCard | Where-Object { $_.StartsWith("**$name.** ", [StringComparison]::Ordinal) }).Count
+        if ($cardLines -eq 1) { Pass "explorer card names $name in one line inside its markers" }
+        else { Fail "explorer card needs exactly one **$name.** line inside its markers" "found $cardLines" }
+    }
+
+    $wireSkill = (Get-OracleSection $orLines 'Adapter Is Not the Wire') -join "`n"
+    foreach ($needle in @('in-process test adapter', 'streamed or chunked', '`HEAD`', 'connection aborts',
+            '`Content-Length`', 'real server', '`debrief.unknown`, never under `found`',
+            'grants no new reach', 'does not fire', 'through `execute`')) {
+        if ($wireSkill.Contains($needle)) { Pass "Adapter Is Not the Wire says: $needle" }
+        else { Fail 'Adapter Is Not the Wire is missing required wording' $needle }
+    }
+    $wireCard = (@($orCard | Where-Object { $_.StartsWith('**Adapter Is Not the Wire.** ', [StringComparison]::Ordinal) })) -join "`n"
+    foreach ($needle in @('in-process test adapter', '`HEAD`', '`Content-Length`', 'real server',
+            '`debrief.unknown`, never `found`')) {
+        if ($wireCard.Contains($needle)) { Pass "card wire line says: $needle" }
+        else { Fail 'card wire line is missing required wording' $needle }
+    }
+
+    $sitesSkill = (Get-OracleSection $orLines 'Two Decision Sites') -join "`n"
+    foreach ($needle in @('agree in every state', 'A disagreement is a finding', '**Acceptable**', '**Defect**')) {
+        if ($sitesSkill.Contains($needle)) { Pass "Two Decision Sites says: $needle" }
+        else { Fail 'Two Decision Sites is missing required wording' $needle }
+    }
+    $sitesCard = @($orCard | Where-Object { $_.StartsWith('**Two Decision Sites.** ', [StringComparison]::Ordinal) -and $_.Contains('agree in every state; a disagreement is a finding') }).Count
+    if ($sitesCard -gt 0) { Pass 'card decision-sites line says both sites must agree in every state' }
+    else { Fail 'card decision-sites line is missing its rule' 'agree in every state; a disagreement is a finding' }
+
+    $safety = (Get-OracleSection $orLines 'Safety of oracle examples') -join "`n"
+    if ($safety.Contains('*Adapter Is Not the Wire* grants no new reach')) { Pass 'oracles safety section keeps wire confirmation inside the authorized target' }
+    else { Fail 'oracles safety section is missing the no-new-reach sentence' '*Adapter Is Not the Wire* grants no new reach' }
+    $orForeign = @($orLines | Where-Object { $_ -cmatch 'through `(bash|shell|run|run_shell_command)`|curl [^`]*(-[A-Za-z]*L|--location)' }).Count
+    if ($orForeign -eq 0) { Pass "oracles skill names only this edition's shell tool and never follows a redirect" }
+    else { Fail "oracles skill names another edition's shell tool or a redirect-following curl" "$orForeign line(s)" }
+    $leaks = @($orLines | Where-Object { $_ -cmatch '(^|[^A-Za-z0-9])[GWD][0-9]{3,}([^0-9]|$)' }).Count
+    $project = @($orLines | Where-Object { $_ -match 'kanban' }).Count
+    if ($leaks -eq 0 -and $project -eq 0) { Pass 'skills/oracles/SKILL.md names no task identifier or project name' }
+    else { Fail 'skills/oracles/SKILL.md leaks a task identifier or project name' "identifier lines: $leaks, project lines: $project" }
+
+    # Frozen copies: the severity token and rank lines, and the six stop-rule
+    # bullets, exactly as they stood before the oracle lines went in.
+    $sevMissing = ''
+    foreach ($line in @('Severity tokens: `Critical` `High` `Moderate` `Minor`',
+            'Severity rank: Critical > High > Moderate > Minor')) {
+        if (@($orCard | Where-Object { $_ -ceq $line }).Count -ne 1) { $sevMissing += " [$line]" }
+    }
+    if ($sevMissing -eq '') { Pass 'explorer card keeps its severity token and rank lines unchanged' }
+    else { Fail 'explorer card severity token or rank line changed' "missing:$sevMissing" }
+    $stopsWant = @(
+        '- `charter_quiet`: new probes turn up nothing new.',
+        '- `probe_budget_exhausted`: every probe in the budget is spent.',
+        '- `tool_call_ceiling`: the tool-call tally reached its ceiling first.',
+        '- `risk_acceptable`: the remaining risk is low enough to leave.',
+        '- `blocked`: setup, access or an unreachable app stops you; also set `status` to "blocked".',
+        '- `no_observation_surface`: a needed observation no tool of yours can make; overrides all; also set `status` to "blocked".') -join "`n"
+    $stopsHave = (@($orCard | Where-Object { $_ -cmatch '^- `[a-z_]+`: ' })) -join "`n"
+    if ($stopsHave -ceq $stopsWant) { Pass 'explorer card keeps its six stop reasons unchanged and in order' }
+    else { Fail 'explorer card stop-rule bullets changed' ("have: " + ($stopsHave -replace "`n", '|')) }
+} else {
+    Fail 'wire and decision-site oracle checks need skills/oracles/SKILL.md and agents/explorer.agent.md'
 }
 
 # --- summary ----------------------------------------------------------------

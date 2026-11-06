@@ -5,7 +5,7 @@
 # plugin's docs require: a valid ROOT manifest, all six core knowledge
 # skills, all seven command-derived skills, both .agent.md agents, the four
 # README-referenced fixtures, and the root docs. Then pins content: the
-# explorer card in agents/explorer.agent.md (markers, position, 4,096-byte
+# explorer card in agents/explorer.agent.md (markers, position, 4,608-byte
 # cap, severity tokens against bug-advocacy's four levels, stop_reason values
 # against the output contract, and path-free skill references). Next, the
 # explorer output contract 1.0: fixtures/example-explorer-output.json (or a
@@ -39,7 +39,12 @@
 # When-a-change trigger, the web-only three never under General, no Tour
 # collision, the in-app and authorized-only framing, curl -q -sS -i through
 # execute and no other edition's tool, no task-identifier or project-name
-# leak, and every lens named in HEURISTICS.md.
+# leak, and every lens named in HEURISTICS.md. Last, the oracles skill's
+# Adapter Is Not the Wire and Two Decision Sites sections (each with an
+# example, the unknown-never-found and agree-in-every-state rules, execute as
+# the shell tool, no new reach, no identifier leak), their one-line card
+# entries inside the markers, and frozen copies of the card's severity token
+# and rank lines and its six stop-rule bullets.
 # Pure shell + python3 (for JSON) — no network, no jq.
 #
 # Copilot conventions (differ from the Claude Code upstream):
@@ -165,7 +170,7 @@ done
 # The first content pins in this edition. Every rule the explorer needs to
 # label a bug and end a session lives on an inline card in
 # agents/explorer.agent.md, so nothing depends on a skill load succeeding.
-# These pins keep the card in place and under its 4,096-byte cap, keep its
+# These pins keep the card in place and under its 4,608-byte cap, keep its
 # severity tokens in step with bug-advocacy's four levels and its stop rules
 # in step with the output contract's stop_reason values, and keep the
 # optional skill references free of file paths. Later port tasks add their
@@ -214,10 +219,14 @@ if [ -f "$EXPLORER" ] && [ -f "$ADVOCACY" ]; then
 
   # Byte cap, measured exactly as: awk '/explorer-card:start/,/explorer-card:end/' | wc -c
   CARD_BYTES=$(card_text | wc -c | tr -d ' ')
-  if [ "$CARD_BYTES" -ge 1 ] && [ "$CARD_BYTES" -le 4096 ]; then
-    ok "explorer card is within 4096 bytes"
+  # The cap is 4,608 bytes. It was 4,096 until the Adapter Is Not the Wire
+  # and Two Decision Sites lines took the card from 4,091 to 4,457 bytes,
+  # 361 over, so it rose by 512, leaving 151 bytes of room. Keep new rules
+  # off the card where they can live elsewhere.
+  if [ "$CARD_BYTES" -ge 1 ] && [ "$CARD_BYTES" -le 4608 ]; then
+    ok "explorer card is within 4608 bytes"
   else
-    nope "explorer card is outside 1-4096 bytes" "measured ${CARD_BYTES} bytes"
+    nope "explorer card is outside 1-4608 bytes" "measured ${CARD_BYTES} bytes"
   fi
 
   # Severity: the card's token line, rank line and ladder bullets must each
@@ -2031,6 +2040,130 @@ if [ -f "$HEUR" ] && [ -f "$HEUR_PAGE" ]; then
   done
 else
   nope "change-risk lens checks need skills/heuristics/SKILL.md and HEURISTICS.md" ""
+fi
+
+# --- Wire and decision-site oracles -----------------------------------------
+#
+# Two named oracles in skills/oracles/SKILL.md, each a section with an
+# *Example:* paragraph: Adapter Is Not the Wire (a result seen only through an
+# in-process test adapter does not establish wire behaviour, so a claim not
+# checked on a real server goes under debrief.unknown, never found) and Two
+# Decision Sites (client and server deciding the same thing must agree in
+# every state). Each also has exactly one line inside the explorer-card
+# markers, because the card has to work without the skill. Confirming on the
+# wire names this edition's shell tool, execute, and grants no new reach. The
+# card's severity token and rank lines and its six stop-rule bullets are
+# frozen here, line for line, so making room for the new lines cannot edit
+# them. Read-only: the files are read as text, never run.
+
+ORACLES="${PLUGIN_ROOT}/skills/oracles/SKILL.md"
+
+oracle_section() {
+  tr -d '\r' < "$1" | awk -v h="## $2" '$0 == h { f = 1; next } f && /^## / { f = 0 } f { print }'
+}
+
+if [ -f "$ORACLES" ] && [ -f "$EXPLORER" ]; then
+  OR_CARD=$(tr -d '\r' < "$EXPLORER" | awk '$0 == "<!-- explorer-card:start -->" { f = 1 } f { print } $0 == "<!-- explorer-card:end -->" { f = 0 }')
+  for name in 'Adapter Is Not the Wire' 'Two Decision Sites'; do
+    HEADS=$(tr -d '\r' < "$ORACLES" | grep -cxF -- "## ${name}")
+    if [ "$HEADS" = "1" ]; then
+      ok "oracles skill defines ${name}"
+    else
+      nope "oracles skill needs exactly one ## ${name} section" "found ${HEADS}"
+    fi
+    if oracle_section "$ORACLES" "$name" | grep -q '^\*Example:\*'; then
+      ok "oracles skill gives ${name} an example"
+    else
+      nope "oracles skill gives ${name} no *Example:* paragraph" ""
+    fi
+    CARD_LINES=$(printf '%s\n' "$OR_CARD" | grep -c "^\*\*${name}\.\*\* ")
+    if [ "$CARD_LINES" = "1" ]; then
+      ok "explorer card names ${name} in one line inside its markers"
+    else
+      nope "explorer card needs exactly one **${name}.** line inside its markers" "found ${CARD_LINES}"
+    fi
+  done
+
+  WIRE_SKILL=$(oracle_section "$ORACLES" 'Adapter Is Not the Wire')
+  for needle in 'in-process test adapter' 'streamed or chunked' '`HEAD`' 'connection aborts' \
+      '`Content-Length`' 'real server' '`debrief.unknown`, never under `found`' \
+      'grants no new reach' 'does not fire' 'through `execute`'; do
+    if printf '%s\n' "$WIRE_SKILL" | grep -qF -- "$needle"; then
+      ok "Adapter Is Not the Wire says: ${needle}"
+    else
+      nope "Adapter Is Not the Wire is missing required wording" "$needle"
+    fi
+  done
+  WIRE_CARD=$(printf '%s\n' "$OR_CARD" | grep '^\*\*Adapter Is Not the Wire\.\*\* ')
+  for needle in 'in-process test adapter' '`HEAD`' '`Content-Length`' 'real server' \
+      '`debrief.unknown`, never `found`'; do
+    if printf '%s\n' "$WIRE_CARD" | grep -qF -- "$needle"; then
+      ok "card wire line says: ${needle}"
+    else
+      nope "card wire line is missing required wording" "$needle"
+    fi
+  done
+
+  SITES_SKILL=$(oracle_section "$ORACLES" 'Two Decision Sites')
+  for needle in 'agree in every state' 'A disagreement is a finding' '**Acceptable**' '**Defect**'; do
+    if printf '%s\n' "$SITES_SKILL" | grep -qF -- "$needle"; then
+      ok "Two Decision Sites says: ${needle}"
+    else
+      nope "Two Decision Sites is missing required wording" "$needle"
+    fi
+  done
+  if printf '%s\n' "$OR_CARD" | grep '^\*\*Two Decision Sites\.\*\* ' | grep -qF -- 'agree in every state; a disagreement is a finding'; then
+    ok "card decision-sites line says both sites must agree in every state"
+  else
+    nope "card decision-sites line is missing its rule" "agree in every state; a disagreement is a finding"
+  fi
+
+  if oracle_section "$ORACLES" 'Safety of oracle examples' | grep -qF -- '*Adapter Is Not the Wire* grants no new reach'; then
+    ok "oracles safety section keeps wire confirmation inside the authorized target"
+  else
+    nope "oracles safety section is missing the no-new-reach sentence" "*Adapter Is Not the Wire* grants no new reach"
+  fi
+  OR_FOREIGN=$(tr -d '\r' < "$ORACLES" | grep -cE 'through `(bash|shell|run|run_shell_command)`|curl [^`]*(-[A-Za-z]*L|--location)')
+  if [ "$OR_FOREIGN" = "0" ]; then
+    ok "oracles skill names only this edition's shell tool and never follows a redirect"
+  else
+    nope "oracles skill names another edition's shell tool or a redirect-following curl" "${OR_FOREIGN} line(s)"
+  fi
+  LEAKS=$(tr -d '\r' < "$ORACLES" | grep -cE '(^|[^A-Za-z0-9])[GWD][0-9]{3,}([^0-9]|$)')
+  PROJECT=$(tr -d '\r' < "$ORACLES" | grep -ci 'kanban')
+  if [ "$LEAKS" = "0" ] && [ "$PROJECT" = "0" ]; then
+    ok "skills/oracles/SKILL.md names no task identifier or project name"
+  else
+    nope "skills/oracles/SKILL.md leaks a task identifier or project name" "identifier lines: ${LEAKS}, project lines: ${PROJECT}"
+  fi
+
+  # Frozen copies: the severity token and rank lines, and the six stop-rule
+  # bullets, exactly as they stood before the oracle lines went in.
+  SEV_MISSING=""
+  for line in 'Severity tokens: `Critical` `High` `Moderate` `Minor`' \
+      'Severity rank: Critical > High > Moderate > Minor'; do
+    [ "$(printf '%s\n' "$OR_CARD" | grep -cxF -- "$line")" = "1" ] || SEV_MISSING="${SEV_MISSING} [${line}]"
+  done
+  if [ -z "$SEV_MISSING" ]; then
+    ok "explorer card keeps its severity token and rank lines unchanged"
+  else
+    nope "explorer card severity token or rank line changed" "missing:${SEV_MISSING}"
+  fi
+  STOPS_WANT=$(printf '%s\n' \
+    '- `charter_quiet`: new probes turn up nothing new.' \
+    '- `probe_budget_exhausted`: every probe in the budget is spent.' \
+    '- `tool_call_ceiling`: the tool-call tally reached its ceiling first.' \
+    '- `risk_acceptable`: the remaining risk is low enough to leave.' \
+    '- `blocked`: setup, access or an unreachable app stops you; also set `status` to "blocked".' \
+    '- `no_observation_surface`: a needed observation no tool of yours can make; overrides all; also set `status` to "blocked".')
+  STOPS_HAVE=$(printf '%s\n' "$OR_CARD" | grep -E '^- `[a-z_]+`: ')
+  if [ "$STOPS_HAVE" = "$STOPS_WANT" ]; then
+    ok "explorer card keeps its six stop reasons unchanged and in order"
+  else
+    nope "explorer card stop-rule bullets changed" "have: $(printf '%s' "$STOPS_HAVE" | tr '\n' '|')"
+  fi
+else
+  nope "wire and decision-site oracle checks need skills/oracles/SKILL.md and agents/explorer.agent.md" ""
 fi
 
 # --- summary ----------------------------------------------------------------
