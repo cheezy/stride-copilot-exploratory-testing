@@ -40,10 +40,11 @@ start: <how the developer starts the app>
 <!--
 The one command that runs a scratch probe file under the project's test framework.
 {probe_file} is the only placeholder, and it appears exactly once. probe_dir is
-optional: project-relative, made only of letters, digits, . _ / and -, and ignored by
-git; leave it out when the framework runs a file from anywhere. Every service listed
-here must also be in ALLOWED_HOSTS; write none when the harness connects to no
-service.
+optional: project-relative, made only of letters, digits, . _ / and -, with no
+empty, . or .. segment (so no trailing /) and none starting with -, ignored by git,
+and not a symbolic link or below one; leave it out when the framework runs a file
+from anywhere. Every service listed here must also be in ALLOWED_HOSTS; write none
+when the harness connects to no service.
 -->
 
 command: <test command> {probe_file}

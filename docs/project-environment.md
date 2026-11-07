@@ -66,9 +66,13 @@ users. It is the sanctioned way for a session to be signed in, as several users.
   explorer puts its own scratch path there and changes nothing else. A command with
   no `{probe_file}`, with two, or with any other placeholder is malformed.
 - `probe_dir:` optional, for a framework that runs only files inside its test tree.
-  A project-relative directory with no `..` segment, made only of letters, digits,
-  `.`, `_`, `/` and `-`, that **git must ignore**. The explorer checks with
-  `git check-ignore` and refuses one git does not ignore. Leave it out when the
+  A project-relative directory made only of letters, digits, `.`, `_`, `/` and `-`,
+  with no empty, `.` or `..` segment (so no trailing `/`) and no segment that starts
+  with `-`. **git must ignore** it, and it is **not a symbolic link, nor below one**.
+  Before it makes anything there, the explorer refuses a value of any other shape,
+  one git does not ignore, and one that is a link or has a link as a leading part; it
+  then runs `git check-ignore` on the probe directory it makes there, which git fails
+  past a link, and removes it and refuses when that fails. Leave it out when the
   framework runs a file from anywhere.
 - `helpers:` the fixture helpers a probe may use: sign-in helpers, factories,
   feature-flag helpers.

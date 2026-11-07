@@ -2613,7 +2613,8 @@ if ((Test-Path -LiteralPath $EnvDocPath -PathType Leaf) -and (Test-Path -Literal
         'never quotes a credential-shaped',
         '**never over an existing file**',
         '**must also be listed in `ALLOWED_HOSTS`**',
-        '**git must ignore**',
+        'with no empty, `.` or `..` segment (so no trailing `/`) and no segment that starts',
+        'with `-`. **git must ignore** it, and it is **not a symbolic link, nor below one**.',
         '**A session never starts or stops the app**',
         '**never forge a session or cookie**',
         'command: <your test runner> {probe_file}',
@@ -2770,6 +2771,110 @@ if ((Test-Path -LiteralPath $EnvDocPath -PathType Leaf) -and (Test-Path -Literal
     if ($foreignShell -ne 0) { $missingPhFile += " [$foreignShell line(s) name another edition's shell tool]" }
     if ($missingPhFile -eq '') { Pass 'the explorer runs only the declared command with only its own scratch path, writes probe files through execute into mktemp or a git-ignored probe directory, and removes them at cleanup' }
     else { Fail "the explorer's probe-file rules are not pinned" "missing:$missingPhFile" }
+
+    # Path hardening: a `..` probe path, a PROBE_DIR of the wrong shape or with a
+    # symbolic link in it (refused before mktemp -d runs), and a new probe
+    # directory git refuses (git fails check-ignore past a symlink) are refused.
+    $missingPhPath = ''
+    if (-not $harnessBullet.Contains('refuse a path not matching `^[A-Za-z0-9._/-]+$` or with a `..` segment')) { $missingPhPath += ' [probe path with a .. segment]' }
+    if (-not $harnessBullet.Contains('Then rerun that check on the new directory; if it fails, `rmdir` it and refuse.')) { $missingPhPath += ' [rerun check-ignore on the new directory]' }
+    $probeDirLine = (@($envExp -split "`n" | Where-Object { $_.StartsWith('- **`PROBE_DIR: <directory>`**') }) -join "`n")
+    if (-not $probeDirLine.Contains('a project-relative path matching `^[A-Za-z0-9._/-]+$`, no segment empty (no trailing `/`), `.`, `..` or starting `-`, git-ignored')) { $missingPhPath += ' [PROBE_DIR shape and segment rule]' }
+    if (-not $probeDirLine.Contains('no symlink (`[ -L ]`) in it or a leading part, checked before `mktemp -d`. Refuse any other.')) { $missingPhPath += ' [PROBE_DIR symlink check before mktemp]' }
+    if ($missingPhPath -eq '') { Pass 'the explorer refuses a probe path with a .. segment, a symlinked PROBE_DIR and a new probe directory git no longer ignores' }
+    else { Fail "the explorer's probe path hardening is not pinned" "missing:$missingPhPath" }
+
+    # Boundary: the PROBE_DIR shape the explorer states, its own regex read from
+    # the line above plus its segment rule, admits plain project paths and
+    # refuses a trailing slash, an absolute path, an empty, `.`, `..` or dash-led
+    # segment (a leading one git or mktemp would read as an option; every one
+    # is refused to keep the rule simple),
+    # an embedded newline and any character outside the set. A .NET `$` also
+    # matches before a final newline, so the match must span the whole value.
+    $probeDirRe = ''
+    $reMatch = [regex]::Match($probeDirLine, 'matching `(\^[^`]*\$)`')
+    if ($reMatch.Success) { $probeDirRe = $reMatch.Groups[1].Value }
+    function Test-ProbeDirShape([string]$re, [string]$v) {
+        if ($re -eq '') { return $false }
+        $m = [regex]::Match($v, $re)
+        if (-not $m.Success -or $m.Length -ne $v.Length) { return $false }
+        $wrapped = "/$v/"
+        return -not ($wrapped.Contains('//') -or $wrapped.Contains('/./') -or $wrapped.Contains('/../') -or $wrapped.Contains('/-'))
+    }
+    $pdWrong = ''
+    foreach ($v in @('test/probes', 'test/support/probes', '.probes', 'test/.probes', 'a_b-c.d/x')) {
+        if (-not (Test-ProbeDirShape $probeDirRe $v)) { $pdWrong += " [refused $v]" }
+    }
+    foreach ($v in @('test/probes/', '/tmp/probes', 'test//probes', 'test/./probes', './probes', '../probes',
+            'test/..', 'test/probes/..', '.', '..', '', '-x', '--stdin', 'test/-x', '-/probes', 'test/pro bes', 'test/$(id)', 'test/*', "test/probes`nx", "test/probes`n")) {
+        if (Test-ProbeDirShape $probeDirRe $v) { $pdWrong += " [admitted $v]" }
+    }
+    if ($probeDirRe -ne '' -and $pdWrong -eq '') { Pass 'the PROBE_DIR shape admits plain project paths and refuses a trailing slash, an absolute path and an empty, ., .. or dash-led segment' }
+    else { Fail 'the PROBE_DIR shape rule admits or refuses the wrong values' "regex=$(if ($probeDirRe) { $probeDirRe } else { 'none' })$pdWrong" }
+
+    # Error path: in a scratch git repository outside the plugin tree, the
+    # explorer's pre-mktemp order (shape, then a link test on the path and each
+    # leading part, then git check-ignore) refuses a symlinked directory git
+    # ignores, a path below a link, a trailing-slash path and an unignored
+    # directory, and admits a real ignored one; git check-ignore fails on a
+    # directory made past a link, which the second check relies on. Nothing here
+    # writes to the plugin.
+    function Test-IsLink([string]$path) {
+        $item = Get-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue
+        return ($null -ne $item -and $null -ne $item.LinkType -and $item.LinkType -ne '')
+    }
+    function Test-ProbeDirAdmitted([string]$re, [string]$repo, [string]$v) {
+        if (-not (Test-ProbeDirShape $re $v)) { return $false }
+        $part = ''
+        foreach ($seg in $v.Split('/')) {
+            $part = if ($part -eq '') { $seg } else { "$part/$seg" }
+            if (Test-IsLink (Join-Path $repo $part)) { return $false }
+        }
+        & git -C $repo check-ignore -q $v 2>$null
+        return ($LASTEXITCODE -eq 0)
+    }
+    # A host that cannot build the fixture (no git, or no right to create a
+    # symbolic link, as on Windows without Developer Mode) skips the check with
+    # the same label and counts neither way; a fixture that builds and refuses
+    # wrongly still fails.
+    $pdErr = ''
+    $pdSkip = ''
+    $pdTmp = Join-Path ([System.IO.Path]::GetTempPath()) ("probe-dir-" + [guid]::NewGuid().ToString('N'))
+    try {
+        $null = New-Item -ItemType Directory -Path (Join-Path $pdTmp 'repo/test/real') -Force -ErrorAction Stop
+        $null = New-Item -ItemType Directory -Path (Join-Path $pdTmp 'repo/test/plain') -Force -ErrorAction Stop
+        $null = New-Item -ItemType Directory -Path (Join-Path $pdTmp 'outside/probes') -Force -ErrorAction Stop
+        $pdRepo = Join-Path $pdTmp 'repo'
+        & git -C $pdRepo init -q 2>$null
+        if ($LASTEXITCODE -ne 0) { throw 'git init failed' }
+        [System.IO.File]::WriteAllText((Join-Path $pdRepo '.gitignore'), "test/real`ntest/lnk`ntest/below`n")
+        $null = New-Item -ItemType SymbolicLink -Path (Join-Path $pdRepo 'test/lnk') -Target (Join-Path $pdTmp 'outside/probes') -ErrorAction Stop
+        $null = New-Item -ItemType SymbolicLink -Path (Join-Path $pdRepo 'test/below') -Target (Join-Path $pdTmp 'outside') -ErrorAction Stop
+        if (-not ((Test-IsLink (Join-Path $pdRepo 'test/lnk')) -and (Test-IsLink (Join-Path $pdRepo 'test/below')))) { throw 'the symbolic links were not created' }
+    } catch {
+        $pdSkip = "git or a symbolic link is not available here: $($_.Exception.Message)"
+    }
+    if ($pdSkip -eq '') { try {
+        if (-not (Test-ProbeDirAdmitted $probeDirRe $pdRepo 'test/real')) { $pdErr += ' [refused a real ignored directory]' }
+        foreach ($v in @('test/lnk', 'test/below/probes', 'test/real/', 'test/plain')) {
+            if (Test-ProbeDirAdmitted $probeDirRe $pdRepo $v) { $pdErr += " [admitted $v]" }
+        }
+        & git -C $pdRepo check-ignore -q 'test/lnk' 2>$null
+        if ($LASTEXITCODE -ne 0) { $pdErr += ' [fixture: git does not ignore test/lnk, so the link test is untested]' }
+        $null = New-Item -ItemType Directory -Path (Join-Path $pdTmp 'outside/probes/made') -ErrorAction Stop
+        & git -C $pdRepo check-ignore -q 'test/lnk/made' 2>$null
+        if ($LASTEXITCODE -eq 0) { $pdErr += ' [git check-ignore passed past a link]' }
+    } catch {
+        $pdErr += " [the checks stopped: $($_.Exception.Message)]"
+    } }
+    if (Test-Path -LiteralPath $pdTmp) { Remove-Item -LiteralPath $pdTmp -Recurse -Force -ErrorAction SilentlyContinue }
+    if ($pdSkip -ne '') { Write-Host "  SKIP  a PROBE_DIR that is a symlink, lies below one, ends in a slash or is not ignored is refused before mktemp -d, and git check-ignore fails past a link"; Write-Host "        skipped, not exercised on this host: $pdSkip" }
+    elseif ($pdErr -eq '') { Pass 'a PROBE_DIR that is a symlink, lies below one, ends in a slash or is not ignored is refused before mktemp -d, and git check-ignore fails past a link' }
+    else { Fail 'the PROBE_DIR refusal order does not refuse a link before mktemp -d' $pdErr }
+
+    $blockedBullet = (@($envExp -split "`n" | Where-Object { $_.StartsWith('- **`blocked`** — ') }) -join "`n")
+    if ($blockedBullet.Contains('the obstacle goes in `debrief` and `proof.obstacles`, never `bugs`; findings before it stay valid.')) { Pass 'a blocked session keeps the findings made before its obstacle' }
+    else { Fail "the explorer's blocked bullet does not keep earlier findings" '' }
 
     $missingPhHosts = Get-AbsentNeedles $harnessBullet 'harness bullet' @(
         'Harness connections obey `ALLOWED_HOSTS` exactly like `curl`: before the first run, check every `PROBE_SERVICES` entry against it',

@@ -2592,7 +2592,8 @@ if [ -f "$ENVDOC" ] && [ -f "$ENVTPL" ] && [ -f "$EXPLORE_SKILL" ] && [ -f "$EXP
     'never quotes a credential-shaped' \
     '**never over an existing file**' \
     '**must also be listed in `ALLOWED_HOSTS`**' \
-    '**git must ignore**' \
+    'with no empty, `.` or `..` segment (so no trailing `/`) and no segment that starts' \
+    'with `-`. **git must ignore** it, and it is **not a symbolic link, nor below one**.' \
     '**A session never starts or stops the app**' \
     '**never forge a session or cookie**' \
     'command: <your test runner> {probe_file}' \
@@ -2768,6 +2769,109 @@ if [ -f "$ENVDOC" ] && [ -f "$ENVTPL" ] && [ -f "$EXPLORE_SKILL" ] && [ -f "$EXP
     ok "the explorer runs only the declared command with only its own scratch path, writes probe files through execute into mktemp or a git-ignored probe directory, and removes them at cleanup"
   else
     nope "the explorer's probe-file rules are not pinned" "missing:${MISSING_PH_FILE}"
+  fi
+
+  # Path hardening: a `..` probe path, a PROBE_DIR of the wrong shape or with a
+  # symbolic link in it (refused before mktemp -d runs), and a new probe
+  # directory git refuses (git fails check-ignore past a symlink) are refused.
+  MISSING_PH_PATH=""
+  printf '%s\n' "$HARNESS_BULLET" | grep -qF -e 'refuse a path not matching `^[A-Za-z0-9._/-]+$` or with a `..` segment' \
+    || MISSING_PH_PATH="${MISSING_PH_PATH} [probe path with a .. segment]"
+  printf '%s\n' "$HARNESS_BULLET" | grep -qF -e 'Then rerun that check on the new directory; if it fails, `rmdir` it and refuse.' \
+    || MISSING_PH_PATH="${MISSING_PH_PATH} [rerun check-ignore on the new directory]"
+  PROBE_DIR_LINE=$(tr -d '\r' < "$EXPLORER" | awk 'index($0, "- **`PROBE_DIR: <directory>`**") == 1')
+  printf '%s\n' "$PROBE_DIR_LINE" | grep -qF -e 'a project-relative path matching `^[A-Za-z0-9._/-]+$`, no segment empty (no trailing `/`), `.`, `..` or starting `-`, git-ignored' \
+    || MISSING_PH_PATH="${MISSING_PH_PATH} [PROBE_DIR shape and segment rule]"
+  printf '%s\n' "$PROBE_DIR_LINE" | grep -qF -e 'no symlink (`[ -L ]`) in it or a leading part, checked before `mktemp -d`. Refuse any other.' \
+    || MISSING_PH_PATH="${MISSING_PH_PATH} [PROBE_DIR symlink check before mktemp]"
+  if [ -z "$MISSING_PH_PATH" ]; then
+    ok "the explorer refuses a probe path with a .. segment, a symlinked PROBE_DIR and a new probe directory git no longer ignores"
+  else
+    nope "the explorer's probe path hardening is not pinned" "missing:${MISSING_PH_PATH}"
+  fi
+
+  # Boundary: the PROBE_DIR shape the explorer states, its own regex read from
+  # the line above plus its segment rule, admits plain project paths and
+  # refuses a trailing slash, an absolute path, an empty, `.`, `..` or dash-led
+  # segment (a leading one git or mktemp would read as an option; every one
+  # is refused to keep the rule simple),
+  # an embedded newline and any character outside the set.
+  PROBE_DIR_RE=$(printf '%s\n' "$PROBE_DIR_LINE" | sed -n 's/.*matching `\(\^[^`]*\$\)`.*/\1/p')
+  probe_dir_shape_ok() {
+    [ -n "$PROBE_DIR_RE" ] || return 1
+    [[ $1 =~ $PROBE_DIR_RE ]] || return 1
+    case "/$1/" in *//*|*/./*|*/../*|*/-*) return 1 ;; esac
+    return 0
+  }
+  PD_WRONG=""
+  for v in 'test/probes' 'test/support/probes' '.probes' 'test/.probes' 'a_b-c.d/x'; do
+    probe_dir_shape_ok "$v" || PD_WRONG="${PD_WRONG} [refused ${v}]"
+  done
+  for v in 'test/probes/' '/tmp/probes' 'test//probes' 'test/./probes' './probes' '../probes' \
+      'test/..' 'test/probes/..' '.' '..' '' '-x' '--stdin' 'test/-x' '-/probes' 'test/pro bes' 'test/$(id)' 'test/*' "test/probes
+x" $'test/probes\n'; do
+    probe_dir_shape_ok "$v" && PD_WRONG="${PD_WRONG} [admitted ${v}]"
+  done
+  if [ -n "$PROBE_DIR_RE" ] && [ -z "$PD_WRONG" ]; then
+    ok "the PROBE_DIR shape admits plain project paths and refuses a trailing slash, an absolute path and an empty, ., .. or dash-led segment"
+  else
+    nope "the PROBE_DIR shape rule admits or refuses the wrong values" "regex=${PROBE_DIR_RE:-none}${PD_WRONG}"
+  fi
+
+  # Error path: in a scratch git repository outside the plugin tree, the
+  # explorer's pre-mktemp order (shape, then [ -L ] on the path and each leading
+  # part, then git check-ignore) refuses a symlinked directory git ignores, a
+  # path below a link, a trailing-slash path and an unignored directory, and
+  # admits a real ignored one; git check-ignore fails on a directory made past a
+  # link, which the second check relies on. Nothing here writes to the plugin.
+  probe_dir_admitted() { # <repo> <value>: 0 when every pre-mktemp check passes
+    local repo="$1" v="$2" part="" seg
+    probe_dir_shape_ok "$v" || return 1
+    local IFS='/'
+    for seg in $v; do
+      part="${part:+${part}/}${seg}"
+      [ ! -L "${repo}/${part}" ] || return 1
+    done
+    git -C "$repo" check-ignore -q "$v" 2>/dev/null
+  }
+  # A host that cannot build the fixture (no git, or an ln -s that copies, as
+  # Git Bash does by default) skips the check with the same label and counts
+  # neither way; a fixture that builds and refuses wrongly still fails.
+  PD_ERR=""; PD_SKIP=""
+  PD_TMP=$(mktemp -d 2>/dev/null || true)
+  if [ -n "$PD_TMP" ] && [ -d "$PD_TMP" ] && command -v git >/dev/null 2>&1 \
+     && mkdir -p "${PD_TMP}/repo/test/real" "${PD_TMP}/repo/test/plain" "${PD_TMP}/outside/probes" \
+     && git -C "${PD_TMP}/repo" init -q 2>/dev/null \
+     && printf 'test/real\ntest/lnk\ntest/below\n' > "${PD_TMP}/repo/.gitignore" \
+     && ln -s "${PD_TMP}/outside/probes" "${PD_TMP}/repo/test/lnk" \
+     && ln -s "${PD_TMP}/outside" "${PD_TMP}/repo/test/below" 2>/dev/null \
+     && [ -L "${PD_TMP}/repo/test/lnk" ] && [ -L "${PD_TMP}/repo/test/below" ]; then
+    probe_dir_admitted "${PD_TMP}/repo" 'test/real' || PD_ERR="${PD_ERR} [refused a real ignored directory]"
+    for v in 'test/lnk' 'test/below/probes' 'test/real/' 'test/plain'; do
+      probe_dir_admitted "${PD_TMP}/repo" "$v" && PD_ERR="${PD_ERR} [admitted ${v}]"
+    done
+    git -C "${PD_TMP}/repo" check-ignore -q 'test/lnk' 2>/dev/null \
+      || PD_ERR="${PD_ERR} [fixture: git does not ignore test/lnk, so the [ -L ] check is untested]"
+    mkdir "${PD_TMP}/outside/probes/made"
+    git -C "${PD_TMP}/repo" check-ignore -q 'test/lnk/made' 2>/dev/null \
+      && PD_ERR="${PD_ERR} [git check-ignore passed past a link]"
+  else
+    PD_SKIP="mktemp, git or a real symbolic link from ln -s is not available here"
+  fi
+  [ -n "$PD_TMP" ] && [ -d "$PD_TMP" ] && rm -rf -- "$PD_TMP"
+  if [ -n "$PD_SKIP" ]; then
+    printf '  -  %s\n     %s\n' "a PROBE_DIR that is a symlink, lies below one, ends in a slash or is not ignored is refused before mktemp -d, and git check-ignore fails past a link" "skipped, not exercised on this host: ${PD_SKIP}"
+  elif [ -z "$PD_ERR" ]; then
+    ok "a PROBE_DIR that is a symlink, lies below one, ends in a slash or is not ignored is refused before mktemp -d, and git check-ignore fails past a link"
+  else
+    nope "the PROBE_DIR refusal order does not refuse a link before mktemp -d" "${PD_ERR}"
+  fi
+
+  BLOCKED_BULLET=$(tr -d '\r' < "$EXPLORER" | awk 'index($0, "- **`blocked`** — ") == 1')
+  if printf '%s\n' "$BLOCKED_BULLET" | grep -qF -e 'the obstacle goes in `debrief` and `proof.obstacles`, never `bugs`; findings before it stay valid.'; then
+    ok "a blocked session keeps the findings made before its obstacle"
+  else
+    nope "the explorer's blocked bullet does not keep earlier findings" ""
   fi
 
   MISSING_PH_HOSTS=""
